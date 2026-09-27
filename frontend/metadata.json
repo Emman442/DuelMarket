@@ -1,0 +1,6 @@
+{
+  "name": "DuelMarket — Peer-to-Peer Prediction Protocol",
+  "description": "Warm, editorial peer-to-peer prediction market protocol for deterministic and evidence-verified vibe duels with contract-enforced resolution.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
