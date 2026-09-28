@@ -223,7 +223,7 @@ export function useCreateCleanMarket() {
         params,
         feePresetLevel ?? "standard"
       );
-      return contract.createCleanMarket(params, feePreset);
+      return contract.createCleanMarket(params);
     },
     onSuccess: () => {
       invalidateMarketQueries(queryClient);
@@ -274,7 +274,7 @@ export function useCreateVibeMarket() {
         params,
         feePresetLevel ?? "standard"
       );
-      return contract.createVibeMarket(params, feePreset);
+      return contract.createVibeMarket(params);
     },
     onSuccess: () => {
       invalidateMarketQueries(queryClient);
@@ -331,7 +331,7 @@ export function useJoinBet() {
         stakeGen,
         feePresetLevel ?? "standard"
       );
-      return contract.joinBet(betId, side, stakeGen, feePreset);
+      return contract.joinBet(betId, side, stakeGen);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
@@ -456,7 +456,7 @@ export function useResolveMarket() {
         betId,
         feePresetLevel ?? "standard"
       );
-      return contract.resolveMarket(betId, feePreset);
+      return contract.resolveMarket(betId);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
@@ -513,7 +513,7 @@ export function useDisputeResolution() {
         appealContext,
         feePresetLevel ?? "standard"
       );
-      return contract.disputeResolution(betId, appealContext, feePreset);
+      return contract.disputeResolution(betId, appealContext);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
@@ -564,7 +564,7 @@ export function useFinalizePayout() {
         betId,
         feePresetLevel ?? "standard"
       );
-      return contract.finalizePayout(betId, feePreset);
+      return contract.finalizePayout(betId);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);

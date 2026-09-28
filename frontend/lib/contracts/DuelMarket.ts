@@ -249,46 +249,35 @@ updateAccount(address: string): void {
 private async write(
   functionName: string,
   args: unknown[],
-  value: bigint = 0n,
-  feePreset?: FeePresetEstimate
+  value: bigint = 0n
 ): Promise<TransactionReceipt> {
-  const fees = feePresetToTransactionFees(feePreset);
-
-  const txHash = await this.client.writeContract({
+  const call = {
     address: this.contractAddress,
     functionName,
     args,
     value,
+  };
+
+  let fees: { distribution: any; feeValue: bigint } | undefined;
+  try {
+    const estimate = await this.client.estimateTransactionFeesForWrite(call);
+    fees = {
+      distribution: estimate.distribution,
+      feeValue: estimate.feeValue,
+    };
+    console.log("feeValue GEN", Number(estimate.feeValue) / 1e18);
+  } catch (err) {
+    console.warn("fee estimate failed", err);
+  }
+
+  const txHash = await this.client.writeContract({
+    ...call,
     ...(fees ? { fees } : {}),
   });
 
-  try {
-    const receipt = await this.client.waitForTransactionReceipt({
-      hash: txHash,
-      status: "ACCEPTED" as any,
-      retries: 24,
-      interval: 5000,
-    });
-    return receipt as TransactionReceipt;
-  } catch (err: any) {
-    const message = String(err?.shortMessage || err?.message || err);
-    if (
-      message.includes("not found") ||
-      err?.name === "ResourceNotFoundRpcError"
-    ) {
-      console.warn(
-        "Transaction sent but RPC has not indexed the hash yet",
-        txHash
-      );
-      return {
-        status: "SUBMITTED",
-        hash: String(txHash),
-      } as TransactionReceipt;
-    }
-    throw err;
-  }
+  // Do not poll eth_getTransactionByHash. Studio Next does not index this hash.
+  return { status: "SUBMITTED", hash: String(txHash) };
 }
-
 
   private async read<T>(functionName: string, args: unknown[] = []): Promise<T> {
     return this.client.readContract({
@@ -492,146 +481,60 @@ private async write(
     }
   }
 
-  async createCleanMarket(
-    params: CreateCleanMarketParams,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const value = toWholeGenWei(params.stakeGen);
-      const preset =
-        feePreset ?? (await this.estimateCreateCleanMarketFees(params));
-      return await this.write(
-        "create_clean_market",
-        this.cleanMarketArgs(params),
-        value,
-        preset
-      );
-    } catch (error) {
-      console.error("Error creating clean market:", error);
-      throw new Error("Failed to create clean market");
-    }
-  }
+ async createCleanMarket(params: CreateCleanMarketParams): Promise<TransactionReceipt> {
+  return this.write(
+    "create_clean_market",
+    this.cleanMarketArgs(params),
+    toWholeGenWei(params.stakeGen)
+  );
+}
 
-  async createVibeMarket(
-    params: CreateVibeMarketParams,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const value = toWholeGenWei(params.stakeGen);
-      const preset =
-        feePreset ?? (await this.estimateCreateVibeMarketFees(params));
-      return await this.write(
-        "create_vibe_market",
-        this.vibeMarketArgs(params),
-        value,
-        preset
-      );
-    } catch (error) {
-      console.error("Error creating vibe market:", error);
-      throw new Error("Failed to create vibe market");
-    }
-  }
+async createVibeMarket(params: CreateVibeMarketParams): Promise<TransactionReceipt> {
+  return this.write(
+    "create_vibe_market",
+    this.vibeMarketArgs(params),
+    toWholeGenWei(params.stakeGen)
+  );
+}
 
-  async joinBet(
-    betId: string,
-    side: BetSide,
-    stakeGen: number | bigint,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const value = toWholeGenWei(stakeGen);
-      const preset =
-        feePreset ?? (await this.estimateJoinBetFees(betId, side, stakeGen));
-      return await this.write("join_bet", [betId, side], value, preset);
-    } catch (error) {
-      console.error("Error joining bet:", error);
-      throw new Error("Failed to join bet");
-    }
-  }
+async joinBet(
+  betId: string,
+  side: BetSide,
+  stakeGen: number | bigint
+): Promise<TransactionReceipt> {
+  return this.write("join_bet", [betId, side], toWholeGenWei(stakeGen));
+}
 
-  async cancelBet(betId: string): Promise<TransactionReceipt> {
-    try {
-      return await this.write("cancel_bet", [betId]);
-    } catch (error) {
-      console.error("Error cancelling bet:", error);
-      throw new Error("Failed to cancel bet");
-    }
-  }
+async cancelBet(betId: string): Promise<TransactionReceipt> {
+  return this.write("cancel_bet", [betId]);
+}
 
-  async voidUnmatchedBet(betId: string): Promise<TransactionReceipt> {
-    try {
-      return await this.write("void_unmatched_bet", [betId]);
-    } catch (error) {
-      console.error("Error voiding unmatched bet:", error);
-      throw new Error("Failed to void unmatched bet");
-    }
-  }
+async voidUnmatchedBet(betId: string): Promise<TransactionReceipt> {
+  return this.write("void_unmatched_bet", [betId]);
+}
 
-  async resolveMarket(
-    betId: string,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const preset = feePreset ?? (await this.estimateResolveMarketFees(betId));
-      return await this.write("resolve_market", [betId], 0n, preset);
-    } catch (error) {
-      console.error("Error resolving market:", error);
-      throw new Error("Failed to resolve market");
-    }
-  }
+async resolveMarket(betId: string): Promise<TransactionReceipt> {
+  return this.write("resolve_market", [betId], 0n);
+}
 
-  async disputeResolution(
-    betId: string,
-    appealContext: string,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const preset =
-        feePreset ??
-        (await this.estimateDisputeResolutionFees(betId, appealContext));
-      return await this.write(
-        "dispute_resolution",
-        [betId, appealContext],
-        0n,
-        preset
-      );
-    } catch (error) {
-      console.error("Error disputing resolution:", error);
-      throw new Error("Failed to dispute resolution");
-    }
-  }
+async disputeResolution(
+  betId: string,
+  appealContext: string
+): Promise<TransactionReceipt> {
+  return this.write("dispute_resolution", [betId, appealContext], 0n);
+}
 
-  async finalizePayout(
-    betId: string,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const preset =
-        feePreset ?? (await this.estimateFinalizePayoutFees(betId));
-      return await this.write("finalize_payout", [betId], 0n, preset);
-    } catch (error) {
-      console.error("Error finalizing payout:", error);
-      throw new Error("Failed to finalize payout");
-    }
-  }
+async finalizePayout(betId: string): Promise<TransactionReceipt> {
+  return this.write("finalize_payout", [betId], 0n);
+}
 
-  async setProtocolFee(newFeeBps: number): Promise<TransactionReceipt> {
-    try {
-      return await this.write("set_protocol_fee", [newFeeBps]);
-    } catch (error) {
-      console.error("Error setting protocol fee:", error);
-      throw new Error("Failed to set protocol fee");
-    }
-  }
+async setProtocolFee(newFeeBps: number): Promise<TransactionReceipt> {
+  return this.write("set_protocol_fee", [newFeeBps]);
+}
 
-  async setTreasury(newTreasury: string): Promise<TransactionReceipt> {
-    try {
-      return await this.write("set_treasury", [newTreasury]);
-    } catch (error) {
-      console.error("Error setting treasury:", error);
-      throw new Error("Failed to set treasury");
-    }
-  }
+async setTreasury(newTreasury: string): Promise<TransactionReceipt> {
+  return this.write("set_treasury", [newTreasury]);
+}
 }
 
 export default DuelMarket;

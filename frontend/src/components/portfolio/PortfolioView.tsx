@@ -5,7 +5,7 @@ import {
   useBets,
   useDuelMarketContract,
   useFinalizePayout,
-} from "@/lib/hooks/useFootballBets";
+} from "@/lib/hooks/useDuelMarket";
 import { useWallet } from "@/lib/genlayer/wallet";
 import type { Bet, BetStatus, Position } from "@/lib/contracts/types";
 

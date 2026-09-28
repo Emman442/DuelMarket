@@ -3,7 +3,7 @@ import { useWallet } from "@/lib/genlayer/wallet";
 import {
   useCreateCleanMarket,
   useCreateVibeMarket,
-} from "@/lib/hooks/useFootballBets";
+} from "@/lib/hooks/useDuelMarket";
 import type { BetSide, ComparisonOp, MarketType } from "@/lib/contracts/types";
 import { toast } from "sonner";
 

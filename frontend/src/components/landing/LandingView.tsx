@@ -1,7 +1,7 @@
 import React from 'react';
 import { PoolSplitBar } from '../common/PoolSplitBar';
 import { StatusTag, MarketTypeTag } from '../common/StatusTag';
-import { useBets } from '@/lib/hooks/useFootballBets';
+import { useBets } from '@/lib/hooks/useDuelMarket';
 import { Bet } from '@/lib/contracts/types';
 
 interface LandingViewProps {

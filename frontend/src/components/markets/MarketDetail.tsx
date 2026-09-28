@@ -13,7 +13,7 @@ import {
   useFinalizePayout,
   useVoidUnmatchedBet,
   useCancelBet,
-} from "@/lib/hooks/useFootballBets";
+} from "@/lib/hooks/useDuelMarket";
 import type { BetSide } from "@/lib/contracts/types";
 
 interface MarketDetailProps {
