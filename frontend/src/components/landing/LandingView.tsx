@@ -1,11 +1,11 @@
 import React from 'react';
-import { useMarkets } from '../../context/MarketContext';
-import { Market } from '../../types/market';
 import { PoolSplitBar } from '../common/PoolSplitBar';
 import { StatusTag, MarketTypeTag } from '../common/StatusTag';
+import { useBets } from '@/lib/hooks/useFootballBets';
+import { Bet } from '@/lib/contracts/types';
 
 interface LandingViewProps {
-  onSelectMarket: (market: Market) => void;
+  onSelectMarket: (market: Bet) => void;
   onExploreMarkets: () => void;
   onCreateMarket: () => void;
 }
@@ -15,10 +15,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onExploreMarkets,
   onCreateMarket,
 }) => {
-  const { markets } = useMarkets();
+  const {data: markets} = useBets()
 
   // Pick top 3 featured markets (e.g. 1 open vibe, 1 open clean, 1 pending appeal or locked)
-  const featuredMarkets = markets.slice(0, 3);
+  const featuredMarkets = markets?.slice(0, 3);
 
   const formatLockTime = (timestamp: number) => {
     const diff = timestamp - Date.now();
@@ -107,24 +107,24 @@ export const LandingView: React.FC<LandingViewProps> = ({
             onClick={onExploreMarkets}
             className="text-xs font-semibold text-[#BA401B] hover:text-[#912F11] cursor-pointer inline-flex items-center gap-1"
           >
-            <span>View All ({markets.length})</span>
+            <span>View All ({markets?.length})</span>
             <span aria-hidden="true">→</span>
           </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {featuredMarkets.map((market) => {
-            const totalPool = market.poolA + market.poolB;
+          {featuredMarkets?.map((market) => {
+            const totalPool = market.side_a_total+ market.side_b_total;
             return (
               <div
-                key={market.id}
+                key={market.bet_id}
                 onClick={() => onSelectMarket(market)}
                 className="group bg-[#FAF8F5] rounded-xl border border-[#E0DAD0] p-6 hover:border-[#D1C9BE] transition-all hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between space-y-5"
               >
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2 text-xs">
-                    <MarketTypeTag type={market.type} />
-                    <StatusTag status={market.status} appealDeadline={market.appealDeadline} />
+                    <MarketTypeTag type={market.market_type} />
+                    <StatusTag status={market.status} appealDeadline={market.appeal_deadline} />
                   </div>
 
                   <h3 className="text-base font-bold text-[#1E1B18] group-hover:text-[#BA401B] transition-colors leading-snug line-clamp-3">
@@ -134,10 +134,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
                 <div className="space-y-4 pt-2 border-t border-[#EBE5DC]">
                   <PoolSplitBar
-                    poolA={market.poolA}
-                    poolB={market.poolB}
-                    labelA={market.sideA.label}
-                    labelB={market.sideB.label}
+                    poolA={market.side_a_total}
+                    poolB={market.side_b_total}
+                    labelA={market.side_a_label}
+                    labelB={market.side_b_label}
                     size="sm"
                   />
 
@@ -146,7 +146,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                       {totalPool.toLocaleString()} GEN staked
                     </span>
                     <span className="text-[#857E74]">
-                      {formatLockTime(market.lockTimestamp)}
+                      {formatLockTime(market.resolve_at)}
                     </span>
                   </div>
                 </div>

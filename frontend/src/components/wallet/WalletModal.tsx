@@ -1,36 +1,28 @@
-import React, { useState } from 'react';
-import { useMarkets } from '../../context/MarketContext';
+import React, { useState } from "react";
+import { useWallet } from "@/lib/genlayer/wallet";
 
 interface WalletModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
-  const {
-    userBalance,
-    userAddress,
-    isWalletConnected,
-    connectWallet,
-    disconnectWallet,
-    faucetGEN,
-  } = useMarkets();
+function shorten(address: string) {
+  if (address.length < 12) return address;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
 
+export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => {
+  const { connectWallet, disconnectWallet, address } = useWallet();
+  const isConnected = Boolean(address);
   const [copied, setCopied] = useState(false);
-  const [faucetSuccess, setFaucetSuccess] = useState(false);
 
   if (!isOpen) return null;
 
   const handleCopy = () => {
-    navigator.clipboard?.writeText?.(userAddress);
+    if (!address) return;
+    navigator.clipboard?.writeText?.(address);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleFaucet = (amount: number) => {
-    faucetGEN(amount);
-    setFaucetSuccess(true);
-    setTimeout(() => setFaucetSuccess(false), 3000);
   };
 
   return (
@@ -42,7 +34,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
               Settlement Account
             </div>
             <h3 className="text-xl font-bold text-[#1E1B18]">
-              {isWalletConnected ? 'Connected Wallet' : 'Connect Account'}
+              {isConnected ? "Connected Wallet" : "Connect Account"}
             </h3>
           </div>
           <button
@@ -53,9 +45,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
           </button>
         </div>
 
-        {isWalletConnected ? (
+        {isConnected ? (
           <div className="space-y-5">
-            {/* Address & Network */}
             <div className="bg-[#F2EDE4] rounded-xl p-4 space-y-2 border border-[#E5DFD4]">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-[#7A7369] uppercase tracking-wider font-semibold">
@@ -63,77 +54,33 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                 </span>
                 <span className="inline-flex items-center gap-1.5 font-medium text-[#1E1B18]">
                   <span className="w-2 h-2 rounded-full bg-[#388E3C]" />
-                  Base Protocol L2
+                  GenLayer Studio Dev · 61997
                 </span>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-[#E8E2D7]">
+              <div className="flex items-center justify-between pt-2 border-t border-[#E8E2D7] gap-3">
                 <span className="text-xs text-[#7A7369] uppercase tracking-wider font-semibold">
                   Address
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-[#1E1B18]">
-                    {userAddress}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono text-xs font-semibold text-[#1E1B18] truncate">
+                    {shorten(address!)}
                   </span>
                   <button
                     onClick={handleCopy}
-                    className="text-[11px] text-[#BA401B] hover:underline cursor-pointer"
+                    className="text-[11px] text-[#BA401B] hover:underline cursor-pointer shrink-0"
                   >
-                    {copied ? 'Copied' : 'Copy'}
+                    {copied ? "Copied" : "Copy"}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* GEN Token Balance */}
-            <div className="bg-white rounded-xl p-4 border border-[#E0DAD0] space-y-1">
-              <span className="text-xs text-[#7A7369] uppercase tracking-wider font-semibold block">
-                Available GEN Balance
-              </span>
-              <div className="text-2xl font-bold text-[#1E1B18] num-tabular">
-                {userBalance.toLocaleString()} GEN
-              </div>
-              <span className="text-[11px] text-[#8C8479]">
-                1 GEN = 1 Unit of Escrow Collateral
-              </span>
-            </div>
+            <p className="text-xs text-[#6B645C] leading-relaxed">
+              GEN for staking comes from the Studio faucet in the account
+              selector, not from this app.
+            </p>
 
-            {/* Faucet Controls */}
-            <div className="space-y-2 pt-1">
-              <span className="text-xs font-bold text-[#1E1B18] uppercase tracking-wider block">
-                Testnet Collateral Faucet
-              </span>
-              <p className="text-xs text-[#6B645C] leading-relaxed">
-                Add simulated GEN tokens to test high-volume peer-to-peer predictions.
-              </p>
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  onClick={() => handleFaucet(500)}
-                  className="px-4 py-2 text-xs font-semibold rounded-full bg-[#EAE5DC] hover:bg-[#DDD6CA] text-[#1E1B18] transition-colors cursor-pointer"
-                >
-                  +500 GEN
-                </button>
-                <button
-                  onClick={() => handleFaucet(1500)}
-                  className="px-4 py-2 text-xs font-semibold rounded-full bg-[#EAE5DC] hover:bg-[#DDD6CA] text-[#1E1B18] transition-colors cursor-pointer"
-                >
-                  +1,500 GEN
-                </button>
-                <button
-                  onClick={() => handleFaucet(5000)}
-                  className="px-4 py-2 text-xs font-semibold rounded-full bg-[#EAE5DC] hover:bg-[#DDD6CA] text-[#1E1B18] transition-colors cursor-pointer"
-                >
-                  +5,000 GEN
-                </button>
-              </div>
-              {faucetSuccess && (
-                <div className="text-xs text-[#2E7D32] font-semibold pt-1">
-                  ✓ Faucet request completed! Tokens added to balance.
-                </div>
-              )}
-            </div>
-
-            {/* Disconnect */}
             <div className="pt-4 border-t border-[#E0DAD0] flex items-center justify-between">
               <button
                 onClick={() => {
@@ -155,16 +102,17 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         ) : (
           <div className="space-y-4 py-2 text-center">
             <p className="text-sm text-[#5C564E] leading-relaxed">
-              Connect your decentralized wallet to stake GEN tokens on public duels or create autonomous prediction markets.
+              Connect a wallet on GenLayer Studio Dev (chain 61997) to stake GEN
+              or create a market.
             </p>
             <button
-              onClick={() => {
-                connectWallet();
+              onClick={async () => {
+                await connectWallet();
                 onClose();
               }}
-              className="w-full py-3 rounded-full bg-[#BA401B] hover:bg-[#A33615] text-white text-sm font-semibold tracking-wide transition-colors cursor-pointer"
+              className="w-full py-3 rounded-full bg-[#BA401B] hover:bg-[#A33615] text-white text-sm font-semibold tracking-wide cursor-pointer"
             >
-              Connect Simulated Wallet (0x78D1...49F3)
+              Connect wallet
             </button>
           </div>
         )}

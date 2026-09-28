@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { MarketProvider } from './context/MarketContext';
 import { Navbar, NavTab } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
 import { LandingView } from './components/landing/LandingView';
@@ -8,7 +7,9 @@ import { MarketDetail } from './components/markets/MarketDetail';
 import { CreateMarketModal } from './components/create/CreateMarketModal';
 import { PortfolioView } from './components/portfolio/PortfolioView';
 import { WalletModal } from './components/wallet/WalletModal';
-import { Market } from './types/market';
+import { WalletProvider } from '@/lib/genlayer/WalletProvider';
+import { Toaster } from 'sonner';
+import { Bet } from '@/lib/contracts/types';
 
 function MainApp() {
   const [currentView, setCurrentView] = useState<NavTab | 'detail'>('landing');
@@ -16,17 +17,12 @@ function MainApp() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
-  const handleSelectMarket = (market: Market) => {
-    setSelectedMarketId(market.id);
+  const handleSelectMarket = (market: Bet) => {
+    setSelectedMarketId(market.bet_id);
     setCurrentView('detail');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleMarketCreated = (newMarketId: string) => {
-    setSelectedMarketId(newMarketId);
-    setCurrentView('detail');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const handleTabChange = (tab: NavTab) => {
     setCurrentView(tab);
@@ -86,7 +82,6 @@ function MainApp() {
       <CreateMarketModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onMarketCreated={handleMarketCreated}
       />
 
       {/* Wallet Modal */}
@@ -100,8 +95,9 @@ function MainApp() {
 
 export default function App() {
   return (
-    <MarketProvider>
-      <MainApp />
-    </MarketProvider>
+      <WalletProvider>
+        <MainApp />
+         <Toaster />
+      </WalletProvider>
   );
 }

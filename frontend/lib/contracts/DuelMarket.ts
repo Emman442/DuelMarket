@@ -1,5 +1,5 @@
 import { createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import type { TransactionReceipt } from "./types";
 import {
   estimateWriteFeePreset,
@@ -192,52 +192,37 @@ class DuelMarket {
   private client: any;
   private studioUrl?: string;
 
-  constructor(
-    contractAddress: string,
-    address?: string | null,
-    studioUrl?: string
-  ) {
-    this.contractAddress = contractAddress as `0x${string}`;
-    this.studioUrl = studioUrl;
+ constructor(
+  contractAddress: string,
+  address?: string | null,
+  studioUrl?: string
+) {
+  this.contractAddress = contractAddress as `0x${string}`;
+  this.studioUrl = studioUrl;
 
-    const config: any = {
-      chain: studionet,
-    };
+  const config: any = { chain: studioDevnet };
+  if (address) config.account = address as `0x${string}`;
+  if (studioUrl) config.endpoint = studioUrl;
+  this.client = createClient(config);
+}
 
-    if (address) {
-      config.account = address as `0x${string}`;
-    }
-
-    if (studioUrl) {
-      config.endpoint = studioUrl;
-    }
-
-    this.client = createClient(config);
-  }
-
-  /**
-   * Update the address used for transactions
-   */
-  updateAccount(address: string): void {
-    const config: any = {
-      chain: studionet,
-      account: address as `0x${string}`,
-    };
-
-    if (this.studioUrl) {
-      config.endpoint = this.studioUrl;
-    }
-
-    this.client = createClient(config);
-  }
+updateAccount(address: string): void {
+  const config: any = {
+    chain: studioDevnet,
+    account: address as `0x${string}`,
+  };
+  if (this.studioUrl) config.endpoint = this.studioUrl;
+  this.client = createClient(config);
+}
 
   private async estimateFees(
-    functionName: string,
-    args: unknown[],
-    level: FeePresetLevel = "standard",
-    value: bigint = 0n
-  ): Promise<FeePresetEstimate | undefined> {
-    return estimateWriteFeePreset(
+  functionName: string,
+  args: unknown[],
+  level: FeePresetLevel = "standard",
+  value: bigint = 0n
+): Promise<FeePresetEstimate | undefined> {
+  try {
+    return await estimateWriteFeePreset(
       this.client,
       {
         address: this.contractAddress,
@@ -247,32 +232,63 @@ class DuelMarket {
       },
       level
     );
+  } catch (err: any) {
+    const message = String(err?.message || err);
+    if (
+      message.includes("sim_getFeeConfig") ||
+      message.includes("Method not found") ||
+      err?.name === "MethodNotFoundRpcError"
+    ) {
+      console.warn("Fee simulation not supported on this RPC, sending without fee preset");
+      return undefined;
+    }
+    throw err;
   }
+}
 
-  private async write(
-    functionName: string,
-    args: unknown[],
-    value: bigint = 0n,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    const fees = feePresetToTransactionFees(feePreset);
-    const txHash = await this.client.writeContract({
-      address: this.contractAddress,
-      functionName,
-      args,
-      value,
-      ...(fees ? { fees } : {}),
-    });
+private async write(
+  functionName: string,
+  args: unknown[],
+  value: bigint = 0n,
+  feePreset?: FeePresetEstimate
+): Promise<TransactionReceipt> {
+  const fees = feePresetToTransactionFees(feePreset);
 
+  const txHash = await this.client.writeContract({
+    address: this.contractAddress,
+    functionName,
+    args,
+    value,
+    ...(fees ? { fees } : {}),
+  });
+
+  try {
     const receipt = await this.client.waitForTransactionReceipt({
       hash: txHash,
       status: "ACCEPTED" as any,
       retries: 24,
       interval: 5000,
     });
-
     return receipt as TransactionReceipt;
+  } catch (err: any) {
+    const message = String(err?.shortMessage || err?.message || err);
+    if (
+      message.includes("not found") ||
+      err?.name === "ResourceNotFoundRpcError"
+    ) {
+      console.warn(
+        "Transaction sent but RPC has not indexed the hash yet",
+        txHash
+      );
+      return {
+        status: "SUBMITTED",
+        hash: String(txHash),
+      } as TransactionReceipt;
+    }
+    throw err;
   }
+}
+
 
   private async read<T>(functionName: string, args: unknown[] = []): Promise<T> {
     return this.client.readContract({

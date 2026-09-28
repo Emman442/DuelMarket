@@ -1,11 +1,9 @@
 import React from 'react';
-import { useMarkets } from '../../context/MarketContext';
 
 export const Footer: React.FC<{ onNavigateToMarkets: () => void; onNavigateToCreate: () => void }> = ({
   onNavigateToMarkets,
   onNavigateToCreate,
 }) => {
-  const { resetAllData } = useMarkets();
 
   return (
     <footer className="mt-24 border-t border-[#E0DAD0] bg-[#ECE8E0]/60 text-[#6B645C] text-xs">
@@ -62,7 +60,7 @@ export const Footer: React.FC<{ onNavigateToMarkets: () => void; onNavigateToCre
           </div>
 
           {/* Col 3 */}
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <div className="text-[11px] uppercase tracking-widest text-[#1E1B18] font-semibold">
               Testing Environment
             </div>
@@ -72,14 +70,14 @@ export const Footer: React.FC<{ onNavigateToMarkets: () => void; onNavigateToCre
             <button
               onClick={() => {
                 if (window.confirm('Reset all demo markets, user stakes, and balance to default state?')) {
-                  resetAllData();
+                  // resetAllData();
                 }
               }}
               className="text-xs text-[#BA401B] hover:underline cursor-pointer pt-1 block"
             >
               Reset Sandbox State
             </button>
-          </div>
+          </div> */}
         </div>
 
         {/* Bottom hairline */}
