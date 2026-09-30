@@ -175,12 +175,6 @@ class DuelMarket {
     this.client = createClient(config);
   }
 
-  /**
-   * Shared by every write method below. Same call shape as LineCall.ts:
-   * writeContract with the converted fee preset, then wait for ACCEPTED
-   * on the returned GenLayer tx id via the client's own lifecycle poller.
-   */
-
 
   private async read<T>(functionName: string, args: unknown[] = []): Promise<T> {
     return this.client.readContract({
@@ -404,9 +398,7 @@ class DuelMarket {
     params: CreateCleanMarketParams,
     feePreset?: FeePresetEstimate
   ): Promise<TransactionReceipt> {
-    const fees = feePresetToTransactionFees(
-      feePreset ?? (await this.estimateCreateCleanMarketFees(params))
-    );
+    const fees = feePresetToTransactionFees(feePreset);
     const txHash = await this.client.writeContract({
       address: this.contractAddress,
       functionName: "create_clean_market",
@@ -429,7 +421,7 @@ class DuelMarket {
     feePreset?: FeePresetEstimate
   ): Promise<TransactionReceipt> {
     const fees = feePresetToTransactionFees(
-      feePreset ?? (await this.estimateCreateVibeMarketFees(params))
+      feePreset 
     );
     const txHash = await this.client.writeContract({
       address: this.contractAddress,
@@ -453,9 +445,7 @@ class DuelMarket {
     stakeGen: number | bigint,
     feePreset?: FeePresetEstimate
   ): Promise<TransactionReceipt> {
-    const fees = feePresetToTransactionFees(
-      feePreset ?? (await this.estimateJoinBetFees(betId, side, stakeGen))
-    );
+    const fees = feePresetToTransactionFees(feePreset );
     const txHash = await this.client.writeContract({
       address: this.contractAddress,
       functionName: "join_bet",

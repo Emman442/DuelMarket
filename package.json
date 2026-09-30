@@ -11,8 +11,5 @@
     "start": "cd frontend && npm run start",
     "lint": "cd frontend && npm run lint",
     "deploy": "genlayer deploy"
-  },
-  "dependencies": {
-    "genlayer-js": "^2.0.0-rc.1"
   }
 }

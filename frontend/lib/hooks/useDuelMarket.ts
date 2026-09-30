@@ -331,7 +331,7 @@ export function useJoinBet() {
         stakeGen,
         feePresetLevel ?? "standard"
       );
-      return contract.joinBet(betId, side, stakeGen);
+      return contract.joinBet(betId, side, stakeGen, feePreset);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
