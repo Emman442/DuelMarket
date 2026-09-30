@@ -5,7 +5,7 @@ import { studioDevnet } from "genlayer-js/chains";
 import { createWalletClient, custom, type WalletClient } from "viem";
 
 export const GENLAYER_CHAIN_ID = parseInt(
-  import.meta.env.VITE_GENLAYER_CHAIN_ID || "61999",
+  import.meta.env.VITE_GENLAYER_CHAIN_ID || "61997",
   10
 );
 export const GENLAYER_CHAIN_ID_HEX = `0x${GENLAYER_CHAIN_ID.toString(16).toUpperCase()}`;
@@ -19,7 +19,7 @@ export const GENLAYER_NETWORK = {
     decimals: 18,
   },
   rpcUrls: [
-    import.meta.env.VITE_GENLAYER_RPC_URL || "https://studio.genlayer.com/api",
+    import.meta.env.VITE_GENLAYER_RPC_URL || "https://studio-dev.genlayer.com/api",
   ],
   blockExplorerUrls: [] as string[],
 };
@@ -166,15 +166,16 @@ export function createMetaMaskWalletClient(): WalletClient | null {
 }
 
 export function createGenLayerClient(address?: string) {
-  const config: any = { chain: studioDevnet };
+  const config: any = { chain: studioDevnet, endpoint: getStudioUrl() };
   if (address) config.account = address as `0x${string}`;
   try {
     return createClient(config);
   } catch (error) {
     console.error("Error creating GenLayer client:", error);
-    return createClient({ chain: studioDevnet});
+    return createClient({ chain: studioDevnet, endpoint: getStudioUrl() });
   }
 }
+
 
 export async function getClient() {
   const accounts = await getAccounts();

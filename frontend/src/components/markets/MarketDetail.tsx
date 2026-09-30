@@ -52,7 +52,7 @@ export const MarketDetail: React.FC<MarketDetailProps> = ({
   const { disputeResolution, isDisputing } = useDisputeResolution();
   const { finalizePayout, isFinalizing } = useFinalizePayout();
   const { voidUnmatchedBet } = useVoidUnmatchedBet();
-  const { cancelBet } = useCancelBet();
+  const {  cancelBet } = useCancelBet();
 
   const [selectedSide, setSelectedSide] = useState<BetSide>("A");
   const [stakeAmount, setStakeAmount] = useState("1");
@@ -272,7 +272,7 @@ export const MarketDetail: React.FC<MarketDetailProps> = ({
                 onClick={() => cancelBet(market.bet_id)}
                 className="px-3 py-1.5 rounded-full bg-[#EAE5DC] text-[#1E1B18] font-medium cursor-pointer"
               >
-                Cancel market
+              Cancel market
               </button>
             )}
             {canAppeal && (

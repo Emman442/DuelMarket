@@ -40,7 +40,6 @@ export interface Bet {
   resolved_at: string;
   appeal_deadline: number;
 }
-
 export interface Position {
   position_id: string;
   bet_id: string;
