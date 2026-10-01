@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import DuelMarket from "../contracts/DuelMarket";
-import { getContractAddress, getStudioUrl } from "../genlayer/client";
+import { getContractAddress } from "../genlayer/client";
 import type { FeePresetLevel } from "../genlayer/fees";
 import { useWallet } from "../genlayer/wallet";
 import { success, error, configError } from "../utils/toast";
@@ -40,11 +40,15 @@ function invalidateMarketQueries(
  * Hook to get the DuelMarket contract instance.
  * Returns null if the contract address is not configured.
  * Recreated whenever the wallet address changes.
+ *
+ * DuelMarket now builds its client via the single createGenLayerClient
+ * factory in genlayer/client.ts internally, so this hook no longer
+ * passes a studioUrl through, there is only one place that owns
+ * endpoint/provider configuration.
  */
 export function useDuelMarketContract(): DuelMarket | null {
   const { address } = useWallet();
   const contractAddress = getContractAddress();
-  const studioUrl = getStudioUrl();
 
   const contract = useMemo(() => {
     if (!contractAddress) {
@@ -59,8 +63,8 @@ export function useDuelMarketContract(): DuelMarket | null {
       return null;
     }
 
-    return new DuelMarket(contractAddress, address, studioUrl);
-  }, [contractAddress, address, studioUrl]);
+    return new DuelMarket(contractAddress, address);
+  }, [contractAddress, address]);
 
   return contract;
 }
@@ -456,7 +460,7 @@ export function useResolveMarket() {
         betId,
         feePresetLevel ?? "standard"
       );
-      return contract.resolveMarket(betId);
+      return contract.resolveMarket(betId, feePreset);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
