@@ -54,7 +54,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
                 </span>
                 <span className="inline-flex items-center gap-1.5 font-medium text-[#1E1B18]">
                   <span className="w-2 h-2 rounded-full bg-[#388E3C]" />
-                  GenLayer Studio Dev · 61997
+                  GenLayer Studio · 61999
                 </span>
               </div>
 
@@ -102,7 +102,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({ isOpen, onClose }) => 
         ) : (
           <div className="space-y-4 py-2 text-center">
             <p className="text-sm text-[#5C564E] leading-relaxed">
-              Connect a wallet on GenLayer Studio Dev (chain 61997) to stake GEN
+              Connect a wallet on GenLayer Studio Dev (chain 61999) to stake GEN
               or create a market.
             </p>
             <button

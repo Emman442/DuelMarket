@@ -1,8 +1,7 @@
-# v0.3.0
-# { "Depends": "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" }
+# v0.2.16
+# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 
-import genlayer as gl
-from genlayer.types import *
+from genlayer import *
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -42,6 +41,7 @@ class Bet:
     resolve_at: i64             # lock time / earliest resolution time, unix ms
     resolved_at: str
     appeal_deadline: i64        # unix ms, valid once status == "pending_appeal"
+    position_ids: DynArray[str]
 
 
 @allow_storage
@@ -57,7 +57,7 @@ class Position:
     joined_at: str
 
 
-class DuelMarket(gl.contract.Contract):
+class DuelMarket(gl.Contract):
 
     bets: TreeMap[str, Bet]
     bet_ids: DynArray[str]
@@ -68,13 +68,6 @@ class DuelMarket(gl.contract.Contract):
 
     # key: "{bet_id}|{wallet}" -> position_id. One position per wallet per bet.
     position_lookup: TreeMap[str, str]
-
-    # key: bet_id -> comma separated list of position_ids for that bet.
-    # Kept as a top-level TreeMap[str, str] rather than a DynArray field
-    # nested inside the Bet dataclass, since a container nested inside a
-    # stored dataclass needs extra allocation handling GenVM's schema
-    # loader doesn't do for us automatically.
-    bet_positions_csv: TreeMap[str, str]
 
     # key: bet_id -> True once that bet has used its one allowed appeal
     appeal_used: TreeMap[str, bool]
@@ -93,11 +86,10 @@ class DuelMarket(gl.contract.Contract):
     ):
         self.admin = admin_address
         self.treasury = treasury_address
-        if int(protocol_fee_bps) < 0 or int(protocol_fee_bps) > 1000:
-            raise gl.vm.UserError("Fee must be between 0 and 1000 bps (0-10%)")
+        assert int(protocol_fee_bps) >= 0 and int(protocol_fee_bps) <= 1000, \
+            "Fee must be between 0 and 1000 bps (0-10%)"
         self.protocol_fee_bps = protocol_fee_bps
-        if int(appeal_window_ms) < 0:
-            raise gl.vm.UserError("appeal_window_ms must be non-negative")
+        assert int(appeal_window_ms) >= 0, "appeal_window_ms must be non-negative"
         self.appeal_window_ms = appeal_window_ms
         self.bet_counter = i32(0)
         self.position_counter = i32(0)
@@ -107,24 +99,10 @@ class DuelMarket(gl.contract.Contract):
     # ---------------------------------------------------------------------
 
     def _only_admin(self) -> None:
-        if str(gl.message.sender_address) != self.admin:
-            raise gl.vm.UserError("Only admin")
+        assert str(gl.message.sender_address) == self.admin, "Only admin"
 
     def _position_key(self, bet_id: str, wallet: str) -> str:
         return bet_id + "|" + wallet
-
-    def _bet_position_ids(self, bet_id: str) -> list:
-        csv = self.bet_positions_csv[bet_id] if bet_id in self.bet_positions_csv else ""
-        if csv == "":
-            return []
-        return csv.split(",")
-
-    def _add_bet_position_id(self, bet_id: str, position_id: str) -> None:
-        existing = self.bet_positions_csv[bet_id] if bet_id in self.bet_positions_csv else ""
-        if existing == "":
-            self.bet_positions_csv[bet_id] = position_id
-        else:
-            self.bet_positions_csv[bet_id] = existing + "," + position_id
 
     def _open_or_add_position(self, bet_id: str, wallet: str, side: str, amount_gen: int) -> str:
         key = self._position_key(bet_id, wallet)
@@ -132,8 +110,7 @@ class DuelMarket(gl.contract.Contract):
         if key in self.position_lookup:
             existing_id = self.position_lookup[key]
             existing = self.positions[existing_id]
-            if existing.side != side:
-                raise gl.vm.UserError("Cannot back both sides of the same bet")
+            assert existing.side == side, "Cannot back both sides of the same bet"
             self.positions[existing_id].amount += i32(amount_gen)
             position_id = existing_id
         else:
@@ -150,7 +127,7 @@ class DuelMarket(gl.contract.Contract):
                 joined_at=gl.message_raw["datetime"]
             )
             self.position_lookup[key] = position_id
-            self._add_bet_position_id(bet_id, position_id)
+            self.bets[bet_id].position_ids.append(position_id)
 
         if side == "A":
             self.bets[bet_id].side_a_total += i32(amount_gen)
@@ -160,7 +137,8 @@ class DuelMarket(gl.contract.Contract):
         return position_id
 
     def _refund_all_positions(self, bet_id: str) -> None:
-        for pid in self._bet_position_ids(bet_id):
+        b = self.bets[bet_id]
+        for pid in b.position_ids:
             pos = self.positions[pid]
             if pos.claimed:
                 continue
@@ -207,36 +185,25 @@ class DuelMarket(gl.contract.Contract):
         """
         creator = str(gl.message.sender_address)
 
-        if len(question) < 10:
-            raise gl.vm.UserError("Question too short")
-        if len(side_a_label) < 1 or len(side_b_label) < 1:
-            raise gl.vm.UserError("Side labels required")
-        if side_a_label == side_b_label:
-            raise gl.vm.UserError("Side labels must be different")
-        if not evidence_url.startswith("http"):
-            raise gl.vm.UserError("Invalid evidence URL")
-        if evidence_url_fallback != "" and not evidence_url_fallback.startswith("http"):
-            raise gl.vm.UserError("Fallback evidence URL must be empty or a valid URL")
-        if len(json_field_path) < 1:
-            raise gl.vm.UserError("JSON field path required")
-        if comparison not in [">", ">=", "<", "<=", "=="]:
-            raise gl.vm.UserError("Invalid comparison operator")
+        assert len(question) >= 8, "Question too short"
+        assert len(side_a_label) >= 1 and len(side_b_label) >= 1, "Side labels required"
+        assert side_a_label != side_b_label, "Side labels must be different"
+        assert evidence_url.startswith("http"), "Invalid evidence URL"
+        assert evidence_url_fallback == "" or evidence_url_fallback.startswith("http"), \
+            "Fallback evidence URL must be empty or a valid URL"
+        assert len(json_field_path) >= 1, "JSON field path required"
+        assert comparison in [">", ">=", "<", "<=", "=="], "Invalid comparison operator"
         try:
             float(target_value)
         except ValueError:
-            raise gl.vm.UserError("target_value must be numeric")
-        if creator_side not in ["A", "B"]:
-            raise gl.vm.UserError("creator_side must be 'A' or 'B'")
-        if int(lock_minutes) < 5:
-            raise gl.vm.UserError("Lock time must be at least 5 minutes out")
-        if int(min_stake) < 1:
-            raise gl.vm.UserError("min_stake must be at least 1")
+            assert False, "target_value must be numeric"
+        assert creator_side in ["A", "B"], "creator_side must be 'A' or 'B'"
+        assert int(lock_minutes) >= 5, "Lock time must be at least 5 minutes out"
+        assert int(min_stake) >= 1, "min_stake must be at least 1"
 
-        if int(gl.message.value) % (10**18) != 0:
-            raise gl.vm.UserError("Stake must be a whole number of GEN")
+        assert int(gl.message.value) % (10**18) == 0, "Stake must be a whole number of GEN"
         amount_gen = int(gl.message.value) // (10**18)
-        if amount_gen < int(min_stake):
-            raise gl.vm.UserError("Initial stake below min_stake")
+        assert amount_gen >= int(min_stake), "Initial stake below min_stake"
 
         self.bet_counter += i32(1)
         bet_id = f"bet_{self.bet_counter}"
@@ -265,11 +232,11 @@ class DuelMarket(gl.contract.Contract):
             created_at=gl.message_raw["datetime"],
             resolve_at=i64(now + int(lock_minutes) * 60 * 1000),
             resolved_at="",
-            appeal_deadline=i64(0)
+            appeal_deadline=i64(0),
+            position_ids=[]
         )
 
         self.bet_ids.append(bet_id)
-        self.bet_positions_csv[bet_id] = ""
         self._open_or_add_position(bet_id, creator, creator_side, amount_gen)
         return bet_id
 
@@ -294,30 +261,20 @@ class DuelMarket(gl.contract.Contract):
         """
         creator = str(gl.message.sender_address)
 
-        if len(question) < 10:
-            raise gl.vm.UserError("Question too short")
-        if len(side_a_label) < 1 or len(side_b_label) < 1:
-            raise gl.vm.UserError("Side labels required")
-        if side_a_label == side_b_label:
-            raise gl.vm.UserError("Side labels must be different")
-        if not evidence_url.startswith("http"):
-            raise gl.vm.UserError("Invalid evidence URL")
-        if evidence_url_fallback != "" and not evidence_url_fallback.startswith("http"):
-            raise gl.vm.UserError("Fallback evidence URL must be empty or a valid URL")
-        if len(resolution_criteria) < 10:
-            raise gl.vm.UserError("Resolution criteria too short")
-        if creator_side not in ["A", "B"]:
-            raise gl.vm.UserError("creator_side must be 'A' or 'B'")
-        if int(lock_minutes) < 5:
-            raise gl.vm.UserError("Lock time must be at least 5 minutes out")
-        if int(min_stake) < 1:
-            raise gl.vm.UserError("min_stake must be at least 1")
+        assert len(question) >= 10, "Question too short"
+        assert len(side_a_label) >= 1 and len(side_b_label) >= 1, "Side labels required"
+        assert side_a_label != side_b_label, "Side labels must be different"
+        assert evidence_url.startswith("http"), "Invalid evidence URL"
+        assert evidence_url_fallback == "" or evidence_url_fallback.startswith("http"), \
+            "Fallback evidence URL must be empty or a valid URL"
+        assert len(resolution_criteria) >= 10, "Resolution criteria too short"
+        assert creator_side in ["A", "B"], "creator_side must be 'A' or 'B'"
+        assert int(lock_minutes) >= 5, "Lock time must be at least 5 minutes out"
+        assert int(min_stake) >= 1, "min_stake must be at least 1"
 
-        if int(gl.message.value) % (10**18) != 0:
-            raise gl.vm.UserError("Stake must be a whole number of GEN")
+        assert int(gl.message.value) % (10**18) == 0, "Stake must be a whole number of GEN"
         amount_gen = int(gl.message.value) // (10**18)
-        if amount_gen < int(min_stake):
-            raise gl.vm.UserError("Initial stake below min_stake")
+        assert amount_gen >= int(min_stake), "Initial stake below min_stake"
 
         self.bet_counter += i32(1)
         bet_id = f"bet_{self.bet_counter}"
@@ -346,11 +303,11 @@ class DuelMarket(gl.contract.Contract):
             created_at=gl.message_raw["datetime"],
             resolve_at=i64(now + int(lock_minutes) * 60 * 1000),
             resolved_at="",
-            appeal_deadline=i64(0)
+            appeal_deadline=i64(0),
+            position_ids=[]
         )
 
         self.bet_ids.append(bet_id)
-        self.bet_positions_csv[bet_id] = ""
         self._open_or_add_position(bet_id, creator, creator_side, amount_gen)
         return bet_id
 
@@ -366,27 +323,21 @@ class DuelMarket(gl.contract.Contract):
         opposite side you already hold is rejected.
         """
         wallet = str(gl.message.sender_address)
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         b = self.bets[bet_id]
-        if b.status != "open":
-            raise gl.vm.UserError("Bet is not open for new positions")
+        assert b.status == "open", "Bet is not open for new positions"
 
         now = int(datetime.now(timezone.utc).timestamp() * 1000)
-        if now >= int(b.resolve_at):
-            raise gl.vm.UserError("Bet has already locked")
-        if side not in ["A", "B"]:
-            raise gl.vm.UserError("side must be 'A' or 'B'")
+        assert now < int(b.resolve_at), "Bet has already locked"
+        assert side in ["A", "B"], "side must be 'A' or 'B'"
 
-        if int(gl.message.value) % (10**18) != 0:
-            raise gl.vm.UserError("Stake must be a whole number of GEN")
+        assert int(gl.message.value) % (10**18) == 0, "Stake must be a whole number of GEN"
         amount_gen = int(gl.message.value) // (10**18)
-        if amount_gen <= 0:
-            raise gl.vm.UserError("Must send a positive amount of GEN")
+        assert amount_gen > 0, "Must send a positive amount of GEN"
 
         key = self._position_key(bet_id, wallet)
-        if key not in self.position_lookup and amount_gen < int(b.min_stake):
-            raise gl.vm.UserError("Stake below this bet's minimum")
+        if key not in self.position_lookup:
+            assert amount_gen >= int(b.min_stake), "Stake below this bet's minimum"
 
         return self._open_or_add_position(bet_id, wallet, side, amount_gen)
 
@@ -398,15 +349,12 @@ class DuelMarket(gl.contract.Contract):
         bet (one side still has zero stake).
         """
         caller = str(gl.message.sender_address)
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         b = self.bets[bet_id]
-        if caller != b.creator and caller != self.admin:
-            raise gl.vm.UserError("Only the creator or admin can cancel")
-        if b.status != "open":
-            raise gl.vm.UserError("Bet is no longer open")
-        if int(b.side_a_total) != 0 and int(b.side_b_total) != 0:
-            raise gl.vm.UserError("Cannot cancel once both sides have participants")
+        assert caller == b.creator or caller == self.admin, "Only the creator or admin can cancel"
+        assert b.status == "open", "Bet is no longer open"
+        assert int(b.side_a_total) == 0 or int(b.side_b_total) == 0, \
+            "Cannot cancel once both sides have participants"
 
         self._refund_all_positions(bet_id)
         self.bets[bet_id].status = "cancelled"
@@ -417,17 +365,14 @@ class DuelMarket(gl.contract.Contract):
         Anyone can call this after lock time if the bet never got a taker
         on the other side. Refunds everyone in full.
         """
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         b = self.bets[bet_id]
-        if b.status != "open":
-            raise gl.vm.UserError("Bet is not open")
+        assert b.status == "open", "Bet is not open"
 
         now = int(datetime.now(timezone.utc).timestamp() * 1000)
-        if now < int(b.resolve_at):
-            raise gl.vm.UserError("Bet has not reached its lock time yet")
-        if int(b.side_a_total) != 0 and int(b.side_b_total) != 0:
-            raise gl.vm.UserError("Bet has participants on both sides — call resolve_market instead")
+        assert now >= int(b.resolve_at), "Bet has not reached its lock time yet"
+        assert int(b.side_a_total) == 0 or int(b.side_b_total) == 0, \
+            "Bet has participants on both sides — call resolve_market instead"
 
         self._refund_all_positions(bet_id)
         self.bets[bet_id].status = "voided"
@@ -444,17 +389,14 @@ class DuelMarket(gl.contract.Contract):
         how the market was created. Anyone can call this once the lock
         time has passed and both sides are funded.
         """
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         b = self.bets[bet_id]
-        if b.status != "open":
-            raise gl.vm.UserError("Bet is not open")
+        assert b.status == "open", "Bet is not open"
 
         now = int(datetime.now(timezone.utc).timestamp() * 1000)
-        if now < int(b.resolve_at):
-            raise gl.vm.UserError("Bet has not reached its lock time yet")
-        if int(b.side_a_total) <= 0 or int(b.side_b_total) <= 0:
-            raise gl.vm.UserError("Both sides need participants before resolving — call void_unmatched_bet instead")
+        assert now >= int(b.resolve_at), "Bet has not reached its lock time yet"
+        assert int(b.side_a_total) > 0 and int(b.side_b_total) > 0, \
+            "Both sides need participants before resolving — call void_unmatched_bet instead"
 
         if b.market_type == "clean":
             self._resolve_clean(bet_id)
@@ -499,7 +441,8 @@ class DuelMarket(gl.contract.Contract):
 
             for url in urls_to_try:
                 try:
-                    raw = gl.nondet.web.render(url, mode="text")
+                    resp = gl.nondet.web.get(url)
+                    raw = resp.body.decode("utf-8")
                     data = json.loads(raw)
                     observed = extract_path(data, field_path)
                     target = float(target_str)
@@ -561,12 +504,11 @@ class DuelMarket(gl.contract.Contract):
             fetched_ok = False
             for url in urls_to_try:
                 try:
-                    text = gl.nondet.web.render(url, mode="text")
-                    if text and len(text) > 0:
-                        body_text = text[:4000]
-                        fetched_url = url
-                        fetched_ok = True
-                        break
+                    resp = gl.nondet.web.get(url)
+                    body_text = resp.body.decode("utf-8", errors="ignore")[:4000]
+                    fetched_url = url
+                    fetched_ok = True
+                    break
                 except Exception:
                     continue
 
@@ -647,23 +589,17 @@ winning_side must be exactly one of: A, B, void
         context, and can uphold or overturn the original verdict.
         """
         caller = str(gl.message.sender_address)
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         b = self.bets[bet_id]
-        if b.status != "pending_appeal":
-            raise gl.vm.UserError("Bet not eligible for appeal")
+        assert b.status == "pending_appeal", "Bet not eligible for appeal"
 
         now = int(datetime.now(timezone.utc).timestamp() * 1000)
-        if now >= int(b.appeal_deadline):
-            raise gl.vm.UserError("Appeal window has closed")
-        if bet_id in self.appeal_used:
-            raise gl.vm.UserError("This bet has already been appealed once")
+        assert now < int(b.appeal_deadline), "Appeal window has closed"
+        assert bet_id not in self.appeal_used, "This bet has already been appealed once"
 
         key = self._position_key(bet_id, caller)
-        if key not in self.position_lookup:
-            raise gl.vm.UserError("Only a participant in this bet can appeal")
-        if len(appeal_context) < 10:
-            raise gl.vm.UserError("Please provide more context for the appeal")
+        assert key in self.position_lookup, "Only a participant in this bet can appeal"
+        assert len(appeal_context) >= 10, "Please provide more context for the appeal"
 
         self.appeal_used[bet_id] = True
 
@@ -687,11 +623,10 @@ winning_side must be exactly one of: A, B, void
             fetched_ok = False
             for url in urls_to_try:
                 try:
-                    text = gl.nondet.web.render(url, mode="text")
-                    if text and len(text) > 0:
-                        body_text = text[:4000]
-                        fetched_ok = True
-                        break
+                    resp = gl.nondet.web.get(url)
+                    body_text = resp.body.decode("utf-8", errors="ignore")[:4000]
+                    fetched_ok = True
+                    break
                 except Exception:
                     continue
 
@@ -776,20 +711,16 @@ winning_side must be exactly one of: A, B, void
         losing pool only, never from principal. A "void" verdict refunds
         everyone in full instead.
         """
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         b = self.bets[bet_id]
-        if b.status not in ["pending_appeal", "appeal_resolved"]:
-            raise gl.vm.UserError("Bet not ready for payout")
+        assert b.status in ["pending_appeal", "appeal_resolved"], "Bet not ready for payout"
 
         if b.status == "pending_appeal":
             now = int(datetime.now(timezone.utc).timestamp() * 1000)
-            if now < int(b.appeal_deadline):
-                raise gl.vm.UserError("Appeal window still open")
+            assert now >= int(b.appeal_deadline), "Appeal window still open"
 
         winning_side = b.winning_side
-        if winning_side not in ["A", "B", "void"]:
-            raise gl.vm.UserError("Bet has no valid verdict")
+        assert winning_side in ["A", "B", "void"], "Bet has no valid verdict"
 
         if winning_side == "void":
             self._refund_all_positions(bet_id)
@@ -798,14 +729,13 @@ winning_side must be exactly one of: A, B, void
 
         winning_total = int(b.side_a_total) if winning_side == "A" else int(b.side_b_total)
         losing_total = int(b.side_b_total) if winning_side == "A" else int(b.side_a_total)
-        if winning_total <= 0:
-            raise gl.vm.UserError("No winning positions to pay out")
+        assert winning_total > 0, "No winning positions to pay out"
 
         fee_amount = (losing_total * int(self.protocol_fee_bps)) // 10000
         distributable = losing_total - fee_amount
 
         allocated = 0
-        for pid in self._bet_position_ids(bet_id):
+        for pid in b.position_ids:
             pos = self.positions[pid]
             if pos.side == winning_side:
                 share = (int(pos.amount) * distributable) // winning_total
@@ -837,15 +767,14 @@ winning_side must be exactly one of: A, B, void
     @gl.public.write
     def set_protocol_fee(self, new_fee_bps: i32) -> None:
         self._only_admin()
-        if int(new_fee_bps) < 0 or int(new_fee_bps) > 1000:
-            raise gl.vm.UserError("Fee must be between 0 and 1000 bps (0-10%)")
+        assert int(new_fee_bps) >= 0 and int(new_fee_bps) <= 1000, \
+            "Fee must be between 0 and 1000 bps (0-10%)"
         self.protocol_fee_bps = new_fee_bps
 
     @gl.public.write
     def set_treasury(self, new_treasury: str) -> None:
         self._only_admin()
-        if len(new_treasury) == 0:
-            raise gl.vm.UserError("Invalid treasury address")
+        assert len(new_treasury) > 0, "Invalid treasury address"
         self.treasury = new_treasury
 
     # ---------------------------------------------------------------------
@@ -854,8 +783,7 @@ winning_side must be exactly one of: A, B, void
 
     @gl.public.view
     def get_bet(self, bet_id: str) -> Bet:
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
         return gl.storage.copy_to_memory(self.bets[bet_id])
 
     @gl.public.view
@@ -877,24 +805,22 @@ winning_side must be exactly one of: A, B, void
 
     @gl.public.view
     def get_position(self, position_id: str) -> Position:
-        if position_id not in self.positions:
-            raise gl.vm.UserError("Position not found")
+        assert position_id in self.positions, "Position not found"
         return gl.storage.copy_to_memory(self.positions[position_id])
 
     @gl.public.view
     def get_bet_positions(self, bet_id: str) -> list[Position]:
-        if bet_id not in self.bets:
-            raise gl.vm.UserError("Bet not found")
+        assert bet_id in self.bets, "Bet not found"
+        b = self.bets[bet_id]
         result = []
-        for pid in self._bet_position_ids(bet_id):
+        for pid in b.position_ids:
             result.append(gl.storage.copy_to_memory(self.positions[pid]))
         return result
 
     @gl.public.view
     def get_wallet_position(self, bet_id: str, wallet: str) -> Position:
         key = self._position_key(bet_id, wallet)
-        if key not in self.position_lookup:
-            raise gl.vm.UserError("No position found for this wallet on this bet")
+        assert key in self.position_lookup, "No position found for this wallet on this bet"
         pid = self.position_lookup[key]
         return gl.storage.copy_to_memory(self.positions[pid])
 
@@ -914,3 +840,4 @@ winning_side must be exactly one of: A, B, void
     @gl.public.view
     def get_total_positions(self) -> i32:
         return self.position_counter
+

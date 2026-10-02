@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import DuelMarket from "../contracts/DuelMarket";
 import { getContractAddress } from "../genlayer/client";
-import type { FeePresetLevel } from "../genlayer/fees";
 import { useWallet } from "../genlayer/wallet";
 import { success, error, configError } from "../utils/toast";
 import type {
@@ -36,48 +35,27 @@ function invalidateMarketQueries(
   }
 }
 
-/**
- * Hook to get the DuelMarket contract instance.
- * Returns null if the contract address is not configured.
- * Recreated whenever the wallet address changes.
- *
- * DuelMarket now builds its client via the single createGenLayerClient
- * factory in genlayer/client.ts internally, so this hook no longer
- * passes a studioUrl through, there is only one place that owns
- * endpoint/provider configuration.
- */
 export function useDuelMarketContract(): DuelMarket | null {
   const { address } = useWallet();
   const contractAddress = getContractAddress();
 
-  const contract = useMemo(() => {
+  return useMemo(() => {
     if (!contractAddress) {
       configError(
         "Setup Required",
-        "Contract address not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.",
-        {
-          label: "Setup Guide",
-          onClick: () => window.open("/docs/setup", "_blank"),
-        }
+        "Contract address not configured. Set VITE_CONTRACT_ADDRESS in your .env file."
       );
       return null;
     }
-
     return new DuelMarket(contractAddress, address);
   }, [contractAddress, address]);
-
-  return contract;
 }
 
 export function useBets() {
   const contract = useDuelMarketContract();
-
   return useQuery<Bet[], Error>({
     queryKey: BETS_KEY,
-    queryFn: () => {
-      if (!contract) return Promise.resolve([]);
-      return contract.getAllBets();
-    },
+    queryFn: () => (contract ? contract.getAllBets() : Promise.resolve([])),
     refetchOnWindowFocus: true,
     staleTime: 2000,
     enabled: !!contract,
@@ -86,13 +64,9 @@ export function useBets() {
 
 export function useOpenBets() {
   const contract = useDuelMarketContract();
-
   return useQuery<Bet[], Error>({
     queryKey: OPEN_BETS_KEY,
-    queryFn: () => {
-      if (!contract) return Promise.resolve([]);
-      return contract.getOpenBets();
-    },
+    queryFn: () => (contract ? contract.getOpenBets() : Promise.resolve([])),
     refetchOnWindowFocus: true,
     staleTime: 2000,
     enabled: !!contract,
@@ -101,28 +75,33 @@ export function useOpenBets() {
 
 export function useBet(betId: string | null) {
   const contract = useDuelMarketContract();
-
   return useQuery<Bet | null, Error>({
     queryKey: ["bet", betId],
-    queryFn: () => {
-      if (!contract || !betId) return Promise.resolve(null);
-      return contract.getBet(betId);
-    },
+    queryFn: () => (contract && betId ? contract.getBet(betId) : Promise.resolve(null)),
     refetchOnWindowFocus: true,
     staleTime: 2000,
     enabled: !!contract && !!betId,
   });
 }
 
+
+export function useWalletPositions(wallet: string | null) {
+  const contract = useDuelMarketContract();
+  return useQuery<Position[], Error>({
+    queryKey: ["walletPositions", wallet],
+    queryFn: () => (contract && wallet ? contract.getWalletPositions(wallet) : Promise.resolve([])),
+    refetchOnWindowFocus: true,
+    staleTime: 2000,
+    enabled: !!contract && !!wallet,
+  });
+}
+
 export function useBetPositions(betId: string | null) {
   const contract = useDuelMarketContract();
-
   return useQuery<Position[], Error>({
     queryKey: ["betPositions", betId],
-    queryFn: () => {
-      if (!contract || !betId) return Promise.resolve([]);
-      return contract.getBetPositions(betId);
-    },
+    queryFn: () =>
+      contract && betId ? contract.getBetPositions(betId) : Promise.resolve([]),
     refetchOnWindowFocus: true,
     staleTime: 2000,
     enabled: !!contract && !!betId,
@@ -131,7 +110,6 @@ export function useBetPositions(betId: string | null) {
 
 export function useWalletPosition(betId: string | null, wallet: string | null) {
   const contract = useDuelMarketContract();
-
   return useQuery<Position | null, Error>({
     queryKey: ["walletPosition", betId, wallet],
     queryFn: async () => {
@@ -148,13 +126,12 @@ export function useWalletPosition(betId: string | null, wallet: string | null) {
 
 export function useHasPosition(betId: string | null, wallet: string | null) {
   const contract = useDuelMarketContract();
-
   return useQuery<boolean, Error>({
     queryKey: ["hasPosition", betId, wallet],
-    queryFn: () => {
-      if (!contract || !betId || !wallet) return Promise.resolve(false);
-      return contract.hasPosition(betId, wallet);
-    },
+    queryFn: () =>
+      contract && betId && wallet
+        ? contract.hasPosition(betId, wallet)
+        : Promise.resolve(false),
     enabled: !!contract && !!betId && !!wallet,
     staleTime: 2000,
   });
@@ -162,13 +139,10 @@ export function useHasPosition(betId: string | null, wallet: string | null) {
 
 export function useHasBeenAppealed(betId: string | null) {
   const contract = useDuelMarketContract();
-
   return useQuery<boolean, Error>({
     queryKey: ["hasBeenAppealed", betId],
-    queryFn: () => {
-      if (!contract || !betId) return Promise.resolve(false);
-      return contract.hasBeenAppealed(betId);
-    },
+    queryFn: () =>
+      contract && betId ? contract.hasBeenAppealed(betId) : Promise.resolve(false),
     enabled: !!contract && !!betId,
     staleTime: 2000,
   });
@@ -176,13 +150,9 @@ export function useHasBeenAppealed(betId: string | null) {
 
 export function useTotalBets() {
   const contract = useDuelMarketContract();
-
   return useQuery<number, Error>({
     queryKey: ["totalBets"],
-    queryFn: () => {
-      if (!contract) return Promise.resolve(0);
-      return contract.getTotalBets();
-    },
+    queryFn: () => (contract ? contract.getTotalBets() : Promise.resolve(0)),
     enabled: !!contract,
     staleTime: 2000,
   });
@@ -190,13 +160,9 @@ export function useTotalBets() {
 
 export function useTotalPositions() {
   const contract = useDuelMarketContract();
-
   return useQuery<number, Error>({
     queryKey: ["totalPositions"],
-    queryFn: () => {
-      if (!contract) return Promise.resolve(0);
-      return contract.getTotalPositions();
-    },
+    queryFn: () => (contract ? contract.getTotalPositions() : Promise.resolve(0)),
     enabled: !!contract,
     staleTime: 2000,
   });
@@ -209,25 +175,11 @@ export function useCreateCleanMarket() {
   const [isCreating, setIsCreating] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: async ({
-      params,
-      feePresetLevel,
-    }: {
-      params: CreateCleanMarketParams;
-      feePresetLevel?: FeePresetLevel;
-    }) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to create a market.");
-      }
+    mutationFn: async (params: CreateCleanMarketParams) => {
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       setIsCreating(true);
-      const feePreset = await contract.estimateCreateCleanMarketFees(
-        params,
-        feePresetLevel ?? "standard"
-      );
-      return contract.createCleanMarket(params, feePreset);
+      return contract.createCleanMarket(params);
     },
     onSuccess: () => {
       invalidateMarketQueries(queryClient);
@@ -237,7 +189,6 @@ export function useCreateCleanMarket() {
       });
     },
     onError: (err: any) => {
-      console.error("Error creating clean market:", err);
       setIsCreating(false);
       error("Failed to create clean market", {
         description: err?.message || "Please try again.",
@@ -260,25 +211,11 @@ export function useCreateVibeMarket() {
   const [isCreating, setIsCreating] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: async ({
-      params,
-      feePresetLevel,
-    }: {
-      params: CreateVibeMarketParams;
-      feePresetLevel?: FeePresetLevel;
-    }) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to create a market.");
-      }
+    mutationFn: async (params: CreateVibeMarketParams) => {
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       setIsCreating(true);
-      const feePreset = await contract.estimateCreateVibeMarketFees(
-        params,
-        feePresetLevel ?? "standard"
-      );
-      return contract.createVibeMarket(params, feePreset);
+      return contract.createVibeMarket(params);
     },
     onSuccess: () => {
       invalidateMarketQueries(queryClient);
@@ -288,7 +225,6 @@ export function useCreateVibeMarket() {
       });
     },
     onError: (err: any) => {
-      console.error("Error creating vibe market:", err);
       setIsCreating(false);
       error("Failed to create vibe market", {
         description: err?.message || "Please try again.",
@@ -315,27 +251,15 @@ export function useJoinBet() {
       betId,
       side,
       stakeGen,
-      feePresetLevel,
     }: {
       betId: string;
       side: BetSide;
       stakeGen: number | bigint;
-      feePresetLevel?: FeePresetLevel;
     }) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to join a bet.");
-      }
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       setIsJoining(true);
-      const feePreset = await contract.estimateJoinBetFees(
-        betId,
-        side,
-        stakeGen,
-        feePresetLevel ?? "standard"
-      );
-      return contract.joinBet(betId, side, stakeGen, feePreset);
+      return contract.joinBet(betId, side, stakeGen);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
@@ -345,7 +269,6 @@ export function useJoinBet() {
       });
     },
     onError: (err: any) => {
-      console.error("Error joining bet:", err);
       setIsJoining(false);
       error("Failed to join bet", {
         description: err?.message || "Please try again.",
@@ -368,25 +291,16 @@ export function useCancelBet() {
 
   const mutation = useMutation({
     mutationFn: async (betId: string) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to cancel a bet.");
-      }
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       return contract.cancelBet(betId);
     },
     onSuccess: (_data, betId) => {
       invalidateMarketQueries(queryClient, betId);
-      success("Bet cancelled", {
-        description: "Open positions were refunded.",
-      });
+      success("Bet cancelled", { description: "Open positions were refunded." });
     },
     onError: (err: any) => {
-      console.error("Error cancelling bet:", err);
-      error("Failed to cancel bet", {
-        description: err?.message || "Please try again.",
-      });
+      error("Failed to cancel bet", { description: err?.message || "Please try again." });
     },
   });
 
@@ -404,25 +318,16 @@ export function useVoidUnmatchedBet() {
 
   const mutation = useMutation({
     mutationFn: async (betId: string) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to void a bet.");
-      }
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       return contract.voidUnmatchedBet(betId);
     },
     onSuccess: (_data, betId) => {
       invalidateMarketQueries(queryClient, betId);
-      success("Bet voided", {
-        description: "Unmatched stakes were refunded.",
-      });
+      success("Bet voided", { description: "Unmatched stakes were refunded." });
     },
     onError: (err: any) => {
-      console.error("Error voiding unmatched bet:", err);
-      error("Failed to void bet", {
-        description: err?.message || "Please try again.",
-      });
+      error("Failed to void bet", { description: err?.message || "Please try again." });
     },
   });
 
@@ -441,29 +346,15 @@ export function useResolveMarket() {
   const [resolvingBetId, setResolvingBetId] = useState<string | null>(null);
 
   const mutation = useMutation({
-    mutationFn: async ({
-      betId,
-      feePresetLevel,
-    }: {
-      betId: string;
-      feePresetLevel?: FeePresetLevel;
-    }) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to resolve a market.");
-      }
+    mutationFn: async (betId: string) => {
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       setIsResolving(true);
       setResolvingBetId(betId);
-      const feePreset = await contract.estimateResolveMarketFees(
-        betId,
-        feePresetLevel ?? "standard"
-      );
-      return contract.resolveMarket(betId, feePreset);
+      return contract.resolveMarket(betId);
     },
-    onSuccess: (_data, variables) => {
-      invalidateMarketQueries(queryClient, variables.betId);
+    onSuccess: (_data, betId) => {
+      invalidateMarketQueries(queryClient, betId);
       setIsResolving(false);
       setResolvingBetId(null);
       success("Market resolved", {
@@ -471,7 +362,6 @@ export function useResolveMarket() {
       });
     },
     onError: (err: any) => {
-      console.error("Error resolving market:", err);
       setIsResolving(false);
       setResolvingBetId(null);
       error("Failed to resolve market", {
@@ -499,25 +389,14 @@ export function useDisputeResolution() {
     mutationFn: async ({
       betId,
       appealContext,
-      feePresetLevel,
     }: {
       betId: string;
       appealContext: string;
-      feePresetLevel?: FeePresetLevel;
     }) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to appeal.");
-      }
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       setIsDisputing(true);
-      const feePreset = await contract.estimateDisputeResolutionFees(
-        betId,
-        appealContext,
-        feePresetLevel ?? "standard"
-      );
-      return contract.disputeResolution(betId, appealContext, feePreset);
+      return contract.disputeResolution(betId, appealContext);
     },
     onSuccess: (_data, variables) => {
       invalidateMarketQueries(queryClient, variables.betId);
@@ -527,7 +406,6 @@ export function useDisputeResolution() {
       });
     },
     onError: (err: any) => {
-      console.error("Error disputing resolution:", err);
       setIsDisputing(false);
       error("Failed to submit appeal", {
         description: err?.message || "Please try again.",
@@ -550,35 +428,20 @@ export function useFinalizePayout() {
   const [isFinalizing, setIsFinalizing] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: async ({
-      betId,
-      feePresetLevel,
-    }: {
-      betId: string;
-      feePresetLevel?: FeePresetLevel;
-    }) => {
-      if (!contract) {
-        throw new Error("Contract not configured. Please set NEXT_PUBLIC_CONTRACT_ADDRESS in your .env file.");
-      }
-      if (!address) {
-        throw new Error("Wallet not connected. Please connect your wallet to finalize payout.");
-      }
+    mutationFn: async (betId: string) => {
+      if (!contract) throw new Error("Contract not configured.");
+      if (!address) throw new Error("Wallet not connected.");
       setIsFinalizing(true);
-      const feePreset = await contract.estimateFinalizePayoutFees(
-        betId,
-        feePresetLevel ?? "standard"
-      );
-      return contract.finalizePayout(betId, feePreset);
+      return contract.finalizePayout(betId);
     },
-    onSuccess: (_data, variables) => {
-      invalidateMarketQueries(queryClient, variables.betId);
+    onSuccess: (_data, betId) => {
+      invalidateMarketQueries(queryClient, betId);
       setIsFinalizing(false);
       success("Payout finalized", {
         description: "Winnings and refunds have been sent.",
       });
     },
     onError: (err: any) => {
-      console.error("Error finalizing payout:", err);
       setIsFinalizing(false);
       error("Failed to finalize payout", {
         description: err?.message || "Please try again.",

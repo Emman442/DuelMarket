@@ -36,9 +36,11 @@ export interface Bet {
   resolution_reasoning: string;
   resolution_value: string;
   created_at: string;
+  positions: Position[];
   resolve_at: number;
   resolved_at: string;
   appeal_deadline: number;
+  position_ids: string[];
 }
 export interface Position {
   position_id: string;

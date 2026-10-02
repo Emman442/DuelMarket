@@ -10,17 +10,19 @@ import { WalletModal } from './components/wallet/WalletModal';
 import { WalletProvider } from '@/lib/genlayer/WalletProvider';
 import { Toaster } from 'sonner';
 import { Bet } from '@/lib/contracts/types';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 
 function MainApp() {
   const [currentView, setCurrentView] = useState<NavTab | 'detail'>('landing');
   const [selectedMarketId, setSelectedMarketId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const navigate = useNavigate();
+
 
   const handleSelectMarket = (market: Bet) => {
-    setSelectedMarketId(market.bet_id);
-    setCurrentView('detail');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    navigate(`/bet/${market.bet_id}`);
   };
 
 
@@ -41,35 +43,75 @@ function MainApp() {
 
       {/* Main Content Area */}
       <main className="flex-1">
-        {currentView === 'landing' && (
-          <LandingView
-            onSelectMarket={handleSelectMarket}
-            onExploreMarkets={() => handleTabChange('markets')}
-            onCreateMarket={() => setIsCreateModalOpen(true)}
+        <Routes>
+          {/* Landing route */}
+          <Route
+            path="/"
+            element={
+              <LandingView
+                onCreateMarket={() => setIsCreateModalOpen(true)}
+                onExploreMarkets={() => navigate('/markets')}
+                onSelectMarket={handleSelectMarket}
+              />
+            }
           />
-        )}
 
-        {currentView === 'markets' && (
-          <MarketsList
-            onSelectMarket={handleSelectMarket}
-            onCreateMarket={() => setIsCreateModalOpen(true)}
+          {/* /bet list and /markets alias */}
+          <Route
+            path="/bet"
+            element={
+              <MarketsList
+                onCreateMarket={() => setIsCreateModalOpen(true)}
+                onSelectMarket={handleSelectMarket}
+              />
+            }
           />
-        )}
+          <Route
+            path="/markets"
+            element={
+              <MarketsList
+                onCreateMarket={() => setIsCreateModalOpen(true)}
+                onSelectMarket={handleSelectMarket}
+              />
+            }
+          />
 
-        {currentView === 'detail' && selectedMarketId && (
-          <MarketDetail
-            marketId={selectedMarketId}
-            onBack={() => setCurrentView('markets')}
-            onOpenWallet={() => setIsWalletModalOpen(true)}
+          <Route
+            path="/bet/:marketId"
+            element={
+              <MarketDetail
+                marketId={selectedMarketId!}
+                onOpenWallet={() => setIsWalletModalOpen(true)}
+                onBack={() => handleTabChange('markets')}
+              />
+            }
           />
-        )}
+          <Route
+            path="/markets/:marketId"
+            element={
+              <MarketDetail
+                marketId={selectedMarketId!}
+                onOpenWallet={() => setIsWalletModalOpen(true)}
+                onBack={() => handleTabChange('markets')}
+              />
+            }
+          />
 
-        {currentView === 'portfolio' && (
-          <PortfolioView
-            onSelectMarket={handleSelectMarket}
-            onExploreMarkets={() => handleTabChange('markets')}
+          <Route
+            path="/my-positions"
+            element={<PortfolioView onSelectMarket={handleSelectMarket} onExploreMarkets={() => navigate('/markets')} />}
           />
-        )}
+
+          {/* Fallback route */}
+          <Route
+            path="*"
+            element={
+              <MarketsList
+                onCreateMarket={() => setIsCreateModalOpen(true)} onSelectMarket={handleSelectMarket}
+              />
+            }
+          />
+        </Routes>
       </main>
 
       {/* Editorial Footer */}
@@ -95,9 +137,11 @@ function MainApp() {
 
 export default function App() {
   return (
+    <BrowserRouter>
       <WalletProvider>
         <MainApp />
-         <Toaster />
+        <Toaster />
       </WalletProvider>
+    </BrowserRouter>
   );
 }

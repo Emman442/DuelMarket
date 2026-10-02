@@ -3,6 +3,7 @@ import { PoolSplitBar } from "../common/PoolSplitBar";
 import { StatusTag, MarketTypeTag } from "../common/StatusTag";
 import { CountdownTimer } from "../common/CountdownTimer";
 import { useWallet } from "@/lib/genlayer/wallet";
+import {getAddress} from "viem"
 import {
   useBet,
   useWalletPosition,
@@ -15,6 +16,7 @@ import {
   useCancelBet,
 } from "@/lib/hooks/useDuelMarket";
 import type { BetSide } from "@/lib/contracts/types";
+import { useParams } from "react-router-dom";
 
 interface MarketDetailProps {
   marketId: string;
@@ -23,6 +25,9 @@ interface MarketDetailProps {
 }
 
 function previewMultiplier(ownPool: number, otherPool: number) {
+
+
+   
   if (ownPool <= 0) return "2.00";
   return (1 + (otherPool * 0.98) / ownPool).toFixed(2);
 }
@@ -39,13 +44,15 @@ export const MarketDetail: React.FC<MarketDetailProps> = ({
   onBack,
   onOpenWallet,
 }) => {
+  const params = useParams<{ marketId?: string }>();
+   
   const { address } = useWallet();
   const isWalletConnected = Boolean(address);
-  const userBalance = 1000;
 
-  const { data: market, isLoading } = useBet(marketId);
-  const { data: position } = useWalletPosition(marketId, address ?? null);
-  const { data: appealed } = useHasBeenAppealed(marketId);
+  const { data: market, isLoading } = useBet(params.marketId || marketId);
+  const { data: position } = useWalletPosition(params.marketId || marketId, getAddress(address!) ?? null);
+  console.log(address, position, params.marketId || marketId, market);
+  const { data: appealed } = useHasBeenAppealed(params.marketId || marketId);
 
   const { joinBet, isJoining } = useJoinBet();
   const { resolveMarket, isResolving } = useResolveMarket();
@@ -253,7 +260,7 @@ export const MarketDetail: React.FC<MarketDetailProps> = ({
             {canResolve && (
               <button
                 disabled={isResolving}
-                onClick={() => resolveMarket({ betId: market.bet_id })}
+                onClick={() => resolveMarket(market.bet_id)}
                 className="px-3 py-1.5 rounded-full bg-[#BA401B] text-white font-medium cursor-pointer disabled:opacity-50"
               >
                 {isResolving ? "Resolving..." : "Resolve market"}
@@ -286,7 +293,7 @@ export const MarketDetail: React.FC<MarketDetailProps> = ({
             {canFinalize && (
               <button
                 disabled={isFinalizing}
-                onClick={() => finalizePayout({ betId: market.bet_id })}
+                onClick={() => finalizePayout(market.bet_id)}
                 className="px-3 py-1.5 rounded-full bg-[#BA401B] text-white font-medium cursor-pointer disabled:opacity-50"
               >
                 {isFinalizing ? "Finalizing..." : "Finalize payout"}

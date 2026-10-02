@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useWallet } from "@/lib/genlayer/wallet";
+import { useNavigate } from "react-router-dom";
 
 export type NavTab = "landing" | "markets" | "create" | "portfolio";
 
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activePositionsCount = 0,
 }) => {
   const { address } = useWallet();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isWalletConnected = Boolean(address);
@@ -36,7 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 bg-[#F2EFE8]/95 backdrop-blur-md border-b border-[#E0DAD0] transition-colors">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <button
-          onClick={() => setActiveTab("landing")}
+          onClick={() => navigate("/")}
           className="text-left group cursor-pointer focus-visible:outline-none"
         >
           <span className="text-xl font-bold tracking-tight text-[#1E1B18] transition-opacity group-hover:opacity-80">
@@ -46,7 +48,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
           <button
-            onClick={() => setActiveTab("markets")}
+            onClick={() => navigate("/markets")}
             className={`transition-colors cursor-pointer pb-0.5 ${
               activeTab === "markets"
                 ? "text-[#1E1B18] border-b-2 border-[#1E1B18] font-semibold"
@@ -57,7 +59,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
           <button
             onClick={() => {
-              setActiveTab("landing");
+              navigate("/");
               setTimeout(() => {
                 document
                   .getElementById("how-it-works")
@@ -70,6 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
           <button
             onClick={() => {
+              navigate("/");
               setActiveTab("create");
               onOpenCreate();
             }}
@@ -82,7 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             Create Duel
           </button>
           <button
-            onClick={() => setActiveTab("portfolio")}
+            onClick={() => navigate("/my-positions")}
             className={`inline-flex items-center gap-1.5 transition-colors cursor-pointer pb-0.5 ${
               activeTab === "portfolio"
                 ? "text-[#1E1B18] border-b-2 border-[#1E1B18] font-semibold"
@@ -137,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="md:hidden border-t border-[#E0DAD0] bg-[#FAF8F5] px-4 py-4 space-y-3">
           <button
             onClick={() => {
-              setActiveTab("markets");
+              navigate("/markets");
               setMobileMenuOpen(false);
             }}
             className="block w-full text-left py-2 text-sm font-medium text-[#1E1B18]"
@@ -146,7 +149,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
           <button
             onClick={() => {
-              setActiveTab("landing");
+              navigate("/");
               setMobileMenuOpen(false);
               setTimeout(() => {
                 document

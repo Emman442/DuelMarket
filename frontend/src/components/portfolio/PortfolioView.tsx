@@ -2,12 +2,14 @@ import React, { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StatusTag, MarketTypeTag } from "../common/StatusTag";
 import {
-  useBets,
+  useWalletPositions,
   useDuelMarketContract,
   useFinalizePayout,
+  useBets,
 } from "@/lib/hooks/useDuelMarket";
 import { useWallet } from "@/lib/genlayer/wallet";
 import type { Bet, BetStatus, Position } from "@/lib/contracts/types";
+import { getClient } from "@/lib/genlayer/client";
 
 interface PortfolioViewProps {
   onSelectMarket: (market: Bet) => void;
@@ -42,49 +44,36 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
   onExploreMarkets,
 }) => {
   const { address } = useWallet();
-  const { data: markets = [], isLoading: marketsLoading } = useBets();
-  const contract = useDuelMarketContract();
   const { finalizePayout, isFinalizing } = useFinalizePayout();
-  const userBalance = 1000;
 
-  const { data: rows = [], isLoading: positionsLoading } = useQuery({
-    queryKey: [
-      "walletPositions",
-      address,
-      markets.map((m) => m.bet_id).join(","),
-    ],
-    enabled: !!contract && !!address && markets.length > 0,
-    queryFn: async () => {
-      const result: { market: Bet; position: Position }[] = [];
-      for (const market of markets) {
-        const has = await contract!.hasPosition(market.bet_id, address!);
-        if (!has) continue;
-        const position = await contract!.getWalletPosition(
-          market.bet_id,
-          address!
-        );
-        result.push({ market, position });
-      }
-      return result;
-    },
-  });
+  const { data: positions = [], isLoading } = useWalletPositions(address || null);
+  const { data: markets = [] } = useBets();
 
-  const activeRows = useMemo(
-    () => rows.filter(({ market }) => !isSettled(market.status)),
-    [rows]
-  );
+  const rows = positions
+    .map((position) => ({
+      position,
+      market: markets.find((market) => market.bet_id === position.bet_id),
+    }))
+    .filter((row): row is { position: Position; market: Bet } => !!row.market);
+
+  const activeRows = rows.filter(({ market }) => !isSettled(market.status));
 
   const totalStakedActive = activeRows.reduce(
     (acc, row) => acc + Number(row.position.amount),
     0
   );
 
-  const totalUnclaimedPayout = rows.reduce((acc, { market, position }) => {
-    return acc + claimableAmount(position, market);
-  }, 0);
+  const totalUnclaimedPayout = rows.reduce(
+    (acc, { market, position }) => acc + claimableAmount(position, market),
+    0
+  );
+
+
 
   const canFinalize = (market: Bet) =>
-    market.status === "appeal_resolved" || market.status === "pending_appeal";
+    market.status === "appeal_resolved" ||
+    (market.status === "pending_appeal" &&
+      Date.now() >= Number(market.appeal_deadline));
 
   if (!address) {
     return (
@@ -102,8 +91,19 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
     );
   }
 
-  const loading = marketsLoading || positionsLoading;
+  const loading = isLoading;
 
+  const { data: userBalance = 0 } = useQuery({
+    queryKey: ["genBalance", address],
+    queryFn: async () => {
+      const client = await getClient();
+      if (!client || !address) return 0;
+      const wei = await client.getBalance({ address: address as `0x${string}` });
+      return Number(wei) / 1e18;
+    },
+    enabled: !!address,
+    staleTime: 5000,
+  });
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#E0DAD0] pb-6">
@@ -150,7 +150,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
             {totalUnclaimedPayout.toLocaleString()} GEN
           </div>
           <span className="text-xs text-[#8C8479]">
-            After finalize_payout has run
+            After market has been resolved
           </span>
         </div>
 
@@ -161,7 +161,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           <div className="text-2xl font-bold text-[#1E1B18] num-tabular">
             {userBalance.toLocaleString()} GEN
           </div>
-          <span className="text-xs text-[#8C8479]">Placeholder until a balance hook exists</span>
+          <span className="text-xs text-[#8C8479]">Genlayer Native Token Balance</span>
         </div>
       </div>
 
@@ -231,9 +231,8 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                     <div className="flex flex-wrap items-center gap-4 text-xs text-[#6B645C] pt-1">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`w-2 h-2 rounded-full ${
-                            position.side === "A" ? "bg-[#BA401B]" : "bg-[#3D3833]"
-                          }`}
+                          className={`w-2 h-2 rounded-full ${position.side === "A" ? "bg-[#BA401B]" : "bg-[#3D3833]"
+                            }`}
                         />
                         <span>
                           Side {position.side}:{" "}
@@ -274,7 +273,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                       <button
                         disabled={isFinalizing}
                         onClick={() =>
-                          finalizePayout({ betId: market.bet_id })
+                          finalizePayout(market.bet_id)
                         }
                         className="px-5 py-2 rounded-full bg-[#BA401B] hover:bg-[#A33615] text-white text-xs font-bold disabled:opacity-50 cursor-pointer"
                       >

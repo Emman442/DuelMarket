@@ -1,11 +1,17 @@
-import { createGenLayerClient } from "../genlayer/client";
-import {
-  estimateWriteFeePreset,
-  feePresetToTransactionFees,
-  type FeePresetEstimate,
-  type FeePresetLevel,
-} from "../genlayer/fees";
-import { Bet, BetSide, BetStatus, ComparisonOp, MarketType, Position, TransactionReceipt, WinningSide } from "../contracts/types";
+import { createClient } from "genlayer-js";
+import { studionet } from "genlayer-js/chains";
+import { TransactionStatus } from "genlayer-js/types";
+import { parseEther } from "viem";
+import type {
+  Bet,
+  BetSide,
+  BetStatus,
+  ComparisonOp,
+  MarketType,
+  Position,
+  TransactionReceipt,
+  WinningSide,
+} from "./types";
 
 export interface CreateCleanMarketParams {
   question: string;
@@ -35,16 +41,6 @@ export interface CreateVibeMarketParams {
   stakeGen: number | bigint;
 }
 
-const GEN_WEI = 10n ** 18n;
-
-function toWholeGenWei(amountGen: number | bigint): bigint {
-  const gen = typeof amountGen === "bigint" ? amountGen : BigInt(amountGen);
-  if (gen <= 0n) {
-    throw new Error("Stake must be a positive whole number of GEN");
-  }
-  return gen * GEN_WEI;
-}
-
 function asRecord(value: unknown): Record<string, any> {
   if (!value) return {};
   if (value instanceof Map) {
@@ -52,9 +48,13 @@ function asRecord(value: unknown): Record<string, any> {
       Array.from(value.entries()).map(([key, inner]) => [String(key), inner])
     );
   }
-  if (typeof value === "object") {
-    return value as Record<string, any>;
+  if (Array.isArray(value)) {
+    const [position_id, bet_id, backer, side, amount, claimed, payout_amount, joined_at] = value;
+    if (typeof position_id === "string" && typeof backer === "string") {
+      return { position_id, bet_id, backer, side, amount, claimed, payout_amount, joined_at };
+    }
   }
+  if (typeof value === "object") return value as Record<string, any>;
   return {};
 }
 
@@ -73,12 +73,19 @@ function toStringValue(value: unknown, fallback = ""): string {
   return String(value);
 }
 
+function idList(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (value instanceof Map) return Array.from(value.values()).map(String).filter(Boolean);
+  return [];
+}
+
 function normalizeBet(raw: unknown): Bet {
   const data = asRecord(raw);
   return {
     bet_id: toStringValue(data.bet_id),
     creator: toStringValue(data.creator),
-    market_type: (toStringValue(data.market_type, "clean") as MarketType),
+    market_type: toStringValue(data.market_type, "clean") as MarketType,
     question: toStringValue(data.question),
     side_a_label: toStringValue(data.side_a_label),
     side_b_label: toStringValue(data.side_b_label),
@@ -91,14 +98,16 @@ function normalizeBet(raw: unknown): Bet {
     min_stake: toNumber(data.min_stake),
     side_a_total: toNumber(data.side_a_total),
     side_b_total: toNumber(data.side_b_total),
-    status: (toStringValue(data.status, "open") as BetStatus),
-    winning_side: (toStringValue(data.winning_side) as WinningSide),
+    status: toStringValue(data.status, "open") as BetStatus,
+    winning_side: toStringValue(data.winning_side) as WinningSide,
     resolution_reasoning: toStringValue(data.resolution_reasoning),
     resolution_value: toStringValue(data.resolution_value),
     created_at: toStringValue(data.created_at),
     resolve_at: toNumber(data.resolve_at),
     resolved_at: toStringValue(data.resolved_at),
     appeal_deadline: toNumber(data.appeal_deadline),
+    position_ids: idList(data.position_ids),
+    positions: [],
   };
 }
 
@@ -108,7 +117,7 @@ function normalizePosition(raw: unknown): Position {
     position_id: toStringValue(data.position_id),
     bet_id: toStringValue(data.bet_id),
     backer: toStringValue(data.backer),
-    side: (toStringValue(data.side, "A") as BetSide),
+    side: toStringValue(data.side, "A") as BetSide,
     amount: toNumber(data.amount),
     claimed: Boolean(data.claimed),
     payout_amount: toNumber(data.payout_amount),
@@ -116,182 +125,59 @@ function normalizePosition(raw: unknown): Position {
   };
 }
 
-function normalizeBetList(raw: unknown): Bet[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normalizeBet);
-  if (raw instanceof Map) {
-    return Array.from(raw.values()).map(normalizeBet);
-  }
-  return [];
+function unwrap<T>(input: any): T {
+  return input?.params ?? input;
 }
 
-function normalizePositionList(raw: unknown): Position[] {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normalizePosition);
-  if (raw instanceof Map) {
-    return Array.from(raw.values()).map(normalizePosition);
-  }
-  return [];
-}
-
-/**
- * DuelMarket contract class for interacting with the GenLayer DuelMarket contract.
- *
- * Every write method here follows the exact same shape as LineCall.ts's
- * working methods: estimate fees with estimateWriteFeePreset (via
- * estimateFees below), convert with feePresetToTransactionFees, call
- * writeContract, then poll with the client's own waitForTransactionReceipt.
- * There is deliberately no client.estimateTransactionFeesForWrite call
- * anywhere in this file, that method produced hashes studio-dev could
- * never resolve afterward, which is why every write here used to fail
- * with "Transaction ... not found" on eth_getTransactionByHash.
- */
 class DuelMarket {
   private contractAddress: `0x${string}`;
-  private client: any;
+  private client: ReturnType<typeof createClient>;
 
-  constructor(contractAddress: string, address?: string | null) {
+  constructor(contractAddress: string, address?: string | null, studioUrl?: string) {
     this.contractAddress = contractAddress as `0x${string}`;
-    this.client = createGenLayerClient(address || undefined);
+    const config: any = { chain: studionet };
+    if (address) config.account = address as `0x${string}`;
+    if (studioUrl) config.endpoint = studioUrl;
+    this.client = createClient(config);
   }
 
   updateAccount(address: string): void {
-    this.client = createGenLayerClient(address);
+    this.client = createClient({
+      chain: studionet,
+      account: address as `0x${string}`,
+    });
   }
 
-  private async estimateFees(
-    functionName: string,
-    args: unknown[],
-    level: FeePresetLevel = "standard",
-    value: bigint = 0n
-  ): Promise<FeePresetEstimate | undefined> {
-    try {
-      return await estimateWriteFeePreset(
-        this.client,
-        {
-          address: this.contractAddress,
-          functionName,
-          args,
-          value,
-        },
-        level
-      );
-    } catch (err: any) {
-      const message = String(err?.message || err);
-      if (
-        message.includes("sim_getFeeConfig") ||
-        message.includes("Method not found") ||
-        err?.name === "MethodNotFoundRpcError"
-      ) {
-        console.warn("Fee simulation not supported on this RPC, sending without fee preset");
-        return undefined;
-      }
-      throw err;
-    }
+  private async read<T>(functionName: string, args: any[] = []): Promise<T> {
+    return this.client.readContract({
+      address: this.contractAddress,
+      functionName,
+      args,
+    }) as Promise<T>;
   }
 
-  /**
-   * Shared by every write method below. Same call shape as LineCall.ts:
-   * writeContract with the converted fee preset, then wait for ACCEPTED
-   * on the returned GenLayer tx id via the client's own lifecycle poller.
-   */
-  private async writeAndWait(
+  private async write(
     functionName: string,
-    args: unknown[],
-    value: bigint,
-    feePreset: FeePresetEstimate | undefined,
-    retries = 48
+    args: any[],
+    value: bigint
   ): Promise<TransactionReceipt> {
-    const fees = feePresetToTransactionFees(feePreset);
+    await this.client.connect("studionet");
     const txHash = await this.client.writeContract({
       address: this.contractAddress,
       functionName,
       args,
       value,
-      ...(fees ? { fees } : {}),
     });
     const receipt = await this.client.waitForTransactionReceipt({
       hash: txHash,
-      status: "ACCEPTED" as any,
-      retries,
+      status: TransactionStatus.ACCEPTED,
+      retries: 48,
       interval: 5000,
     });
     return receipt as TransactionReceipt;
   }
 
-  private async read<T>(functionName: string, args: unknown[] = []): Promise<T> {
-    return this.client.readContract({
-      address: this.contractAddress,
-      functionName,
-      args,
-    });
-  }
-
-  async estimateCreateCleanMarketFees(
-    params: CreateCleanMarketParams,
-    level: FeePresetLevel = "standard"
-  ): Promise<FeePresetEstimate | undefined> {
-    return this.estimateFees(
-      "create_clean_market",
-      this.cleanMarketArgs(params),
-      level,
-      toWholeGenWei(params.stakeGen)
-    );
-  }
-
-  async estimateCreateVibeMarketFees(
-    params: CreateVibeMarketParams,
-    level: FeePresetLevel = "standard"
-  ): Promise<FeePresetEstimate | undefined> {
-    return this.estimateFees(
-      "create_vibe_market",
-      this.vibeMarketArgs(params),
-      level,
-      toWholeGenWei(params.stakeGen)
-    );
-  }
-
-  async estimateJoinBetFees(
-    betId: string,
-    side: BetSide,
-    stakeGen: number | bigint,
-    level: FeePresetLevel = "standard"
-  ): Promise<FeePresetEstimate | undefined> {
-    return this.estimateFees(
-      "join_bet",
-      [betId, side],
-      level,
-      toWholeGenWei(stakeGen)
-    );
-  }
-
-  async estimateResolveMarketFees(
-    betId: string,
-    level: FeePresetLevel = "standard"
-  ): Promise<FeePresetEstimate | undefined> {
-    return this.estimateFees("resolve_market", [betId], level);
-  }
-
-  async estimateDisputeResolutionFees(
-    betId: string,
-    appealContext: string,
-    level: FeePresetLevel = "standard"
-  ): Promise<FeePresetEstimate | undefined> {
-    return this.estimateFees(
-      "dispute_resolution",
-      [betId, appealContext],
-      level
-    );
-  }
-
-  async estimateFinalizePayoutFees(
-    betId: string,
-    level: FeePresetLevel = "standard"
-  ): Promise<FeePresetEstimate | undefined> {
-    return this.estimateFees("finalize_payout", [betId], level);
-  }
-
-  private cleanMarketArgs(params: CreateCleanMarketParams): unknown[] {
+  private cleanMarketArgs(params: CreateCleanMarketParams): any[] {
     return [
       params.question,
       params.sideALabel,
@@ -307,7 +193,7 @@ class DuelMarket {
     ];
   }
 
-  private vibeMarketArgs(params: CreateVibeMarketParams): unknown[] {
+  private vibeMarketArgs(params: CreateVibeMarketParams): any[] {
     return [
       params.question,
       params.sideALabel,
@@ -321,240 +207,129 @@ class DuelMarket {
     ];
   }
 
-  async getBet(betId: string): Promise<Bet> {
-    try {
-      const bet = await this.read("get_bet", [betId]);
-      return normalizeBet(bet);
-    } catch (error) {
-      console.error("Error fetching bet:", error);
-      throw new Error("Failed to fetch bet from contract");
+  async getPosition(positionId: string): Promise<Position> {
+    return normalizePosition(await this.read("get_position", [positionId]));
+  }
+
+  async hydrateBet(raw: unknown): Promise<Bet> {
+    const bet = normalizeBet(raw);
+    const positions: Position[] = [];
+    for (const id of bet.position_ids ?? []) {
+      positions.push(await this.getPosition(id));
     }
+    bet.positions = positions;
+    return bet;
+  }
+
+  async getBet(betId: string): Promise<Bet> {
+    return this.hydrateBet(await this.read("get_bet", [betId]));
   }
 
   async getAllBets(): Promise<Bet[]> {
-    try {
-      const bets = await this.read("get_all_bets", []);
-      return normalizeBetList(bets);
-    } catch (error) {
-      console.error("Error fetching bets:", error);
-      throw new Error("Failed to fetch bets from contract");
-    }
+    const raw = await this.read<unknown>("get_all_bets", []);
+    const list = Array.isArray(raw) ? raw : raw instanceof Map ? Array.from(raw.values()) : [];
+    const out: Bet[] = [];
+    for (const row of list) out.push(await this.hydrateBet(row));
+    return out;
   }
 
   async getOpenBets(): Promise<Bet[]> {
-    try {
-      const bets = await this.read("get_open_bets", []);
-      return normalizeBetList(bets);
-    } catch (error) {
-      console.error("Error fetching open bets:", error);
-      throw new Error("Failed to fetch open bets from contract");
-    }
-  }
-
-  async getPosition(positionId: string): Promise<Position> {
-    try {
-      const position = await this.read("get_position", [positionId]);
-      return normalizePosition(position);
-    } catch (error) {
-      console.error("Error fetching position:", error);
-      throw new Error("Failed to fetch position from contract");
-    }
+    const raw = await this.read<unknown>("get_open_bets", []);
+    const list = Array.isArray(raw) ? raw : raw instanceof Map ? Array.from(raw.values()) : [];
+    const out: Bet[] = [];
+    for (const row of list) out.push(await this.hydrateBet(row));
+    return out;
   }
 
   async getBetPositions(betId: string): Promise<Position[]> {
-    try {
-      const positions = await this.read("get_bet_positions", [betId]);
-      return normalizePositionList(positions);
-    } catch (error) {
-      console.error("Error fetching bet positions:", error);
-      throw new Error("Failed to fetch bet positions from contract");
-    }
+    const bet = await this.getBet(betId);
+    return bet.positions ?? [];
   }
 
   async getWalletPosition(betId: string, wallet: string): Promise<Position> {
-    try {
-      const position = await this.read("get_wallet_position", [betId, wallet]);
-      return normalizePosition(position);
-    } catch (error) {
-      console.error("Error fetching wallet position:", error);
-      throw new Error("Failed to fetch wallet position from contract");
-    }
+    return normalizePosition(await this.read("get_wallet_position", [betId, wallet]));
   }
 
   async hasPosition(betId: string, wallet: string): Promise<boolean> {
     try {
-      const result = await this.read("has_position", [betId, wallet]);
-      return Boolean(result);
-    } catch (error) {
-      console.error("Error checking position:", error);
+      return Boolean(await this.read("has_position", [betId, wallet]));
+    } catch {
       return false;
     }
   }
 
+  async getWalletPositions(wallet: string): Promise<Position[]> {
+    const bets = await this.getAllBets();
+    const walletLower = wallet.toLowerCase();
+    return bets
+      .flatMap((bet) => bet.positions ?? [])
+      .filter((position) => position.backer.toLowerCase() === walletLower);
+  }
+
   async hasBeenAppealed(betId: string): Promise<boolean> {
     try {
-      const result = await this.read("has_been_appealed", [betId]);
-      return Boolean(result);
-    } catch (error) {
-      console.error("Error checking appeal status:", error);
+      return Boolean(await this.read("has_been_appealed", [betId]));
+    } catch {
       return false;
     }
   }
 
   async getTotalBets(): Promise<number> {
-    try {
-      const total = await this.read("get_total_bets", []);
-      return toNumber(total);
-    } catch (error) {
-      console.error("Error fetching total bets:", error);
-      return 0;
-    }
+    return toNumber(await this.read("get_total_bets", []));
   }
 
   async getTotalPositions(): Promise<number> {
-    try {
-      const total = await this.read("get_total_positions", []);
-      return toNumber(total);
-    } catch (error) {
-      console.error("Error fetching total positions:", error);
-      return 0;
-    }
+    return toNumber(await this.read("get_total_positions", []));
   }
 
-  async createCleanMarket(
-    params: CreateCleanMarketParams,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const value = toWholeGenWei(params.stakeGen);
-      const preset = feePreset ?? (await this.estimateCreateCleanMarketFees(params));
-      return await this.writeAndWait(
-        "create_clean_market",
-        this.cleanMarketArgs(params),
-        value,
-        preset
-      );
-    } catch (error) {
-      console.error("Error creating clean market:", error);
-      throw new Error("Failed to create clean market");
-    }
+  async createCleanMarket(input: CreateCleanMarketParams | { params: CreateCleanMarketParams }) {
+    const params = unwrap<CreateCleanMarketParams>(input);
+    return this.write(
+      "create_clean_market",
+      this.cleanMarketArgs(params.params),
+      parseEther(String(params.params.stakeGen))
+    );
   }
 
-  async createVibeMarket(
-    params: CreateVibeMarketParams,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const value = toWholeGenWei(params.stakeGen);
-      const preset = feePreset ?? (await this.estimateCreateVibeMarketFees(params));
-      return await this.writeAndWait(
-        "create_vibe_market",
-        this.vibeMarketArgs(params),
-        value,
-        preset
-      );
-    } catch (error) {
-      console.error("Error creating vibe market:", error);
-      throw new Error("Failed to create vibe market");
-    }
+  async createVibeMarket(input: CreateVibeMarketParams | { params: CreateVibeMarketParams }) {
+    const params = unwrap<CreateVibeMarketParams>(input);
+    return this.write(
+      "create_vibe_market",
+      this.vibeMarketArgs(params.params),
+      parseEther(String(params.params.stakeGen))
+    );
   }
 
-  async joinBet(
-    betId: string,
-    side: BetSide,
-    stakeGen: number | bigint,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const value = toWholeGenWei(stakeGen);
-      const preset = feePreset ?? (await this.estimateJoinBetFees(betId, side, stakeGen));
-      return await this.writeAndWait("join_bet", [betId, side], value, preset);
-    } catch (error) {
-      console.error("Error joining bet:", error);
-      throw new Error("Failed to join bet");
-    }
+  async joinBet(betId: string, side: BetSide, stakeGen: number | bigint) {
+    return this.write("join_bet", [betId, side], parseEther(stakeGen.toString()));
   }
 
-  async cancelBet(betId: string, feePreset?: FeePresetEstimate): Promise<TransactionReceipt> {
-    try {
-      return await this.writeAndWait("cancel_bet", [betId], 0n, feePreset);
-    } catch (error) {
-      console.error("Error cancelling bet:", error);
-      throw new Error("Failed to cancel bet");
-    }
+  async cancelBet(betId: string) {
+    return this.write("cancel_bet", [betId], 0n);
   }
 
-  async voidUnmatchedBet(betId: string, feePreset?: FeePresetEstimate): Promise<TransactionReceipt> {
-    try {
-      return await this.writeAndWait("void_unmatched_bet", [betId], 0n, feePreset);
-    } catch (error) {
-      console.error("Error voiding unmatched bet:", error);
-      throw new Error("Failed to void unmatched bet");
-    }
+  async voidUnmatchedBet(betId: string) {
+    return this.write("void_unmatched_bet", [betId], 0n);
   }
 
-  async resolveMarket(
-    betId: string,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const preset = feePreset ?? (await this.estimateResolveMarketFees(betId));
-      return await this.writeAndWait("resolve_market", [betId], 0n, preset);
-    } catch (error) {
-      console.error("Error resolving market:", error);
-      throw new Error("Failed to resolve market");
-    }
+  async resolveMarket(betId: string) {
+    return this.write("resolve_market", [betId], 0n);
   }
 
-  async disputeResolution(
-    betId: string,
-    appealContext: string,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const preset =
-        feePreset ?? (await this.estimateDisputeResolutionFees(betId, appealContext));
-      return await this.writeAndWait(
-        "dispute_resolution",
-        [betId, appealContext],
-        0n,
-        preset
-      );
-    } catch (error) {
-      console.error("Error disputing resolution:", error);
-      throw new Error("Failed to dispute resolution");
-    }
+  async disputeResolution(betId: string, appealContext: string) {
+    return this.write("dispute_resolution", [betId, appealContext], 0n);
   }
 
-  async finalizePayout(
-    betId: string,
-    feePreset?: FeePresetEstimate
-  ): Promise<TransactionReceipt> {
-    try {
-      const preset = feePreset ?? (await this.estimateFinalizePayoutFees(betId));
-      return await this.writeAndWait("finalize_payout", [betId], 0n, preset);
-    } catch (error) {
-      console.error("Error finalizing payout:", error);
-      throw new Error("Failed to finalize payout");
-    }
+  async finalizePayout(betId: string) {
+    return this.write("finalize_payout", [betId], 0n);
   }
 
-  async setProtocolFee(newFeeBps: number, feePreset?: FeePresetEstimate): Promise<TransactionReceipt> {
-    try {
-      return await this.writeAndWait("set_protocol_fee", [newFeeBps], 0n, feePreset);
-    } catch (error) {
-      console.error("Error setting protocol fee:", error);
-      throw new Error("Failed to set protocol fee");
-    }
+  async setProtocolFee(newFeeBps: number) {
+    return this.write("set_protocol_fee", [newFeeBps], 0n);
   }
 
-  async setTreasury(newTreasury: string, feePreset?: FeePresetEstimate): Promise<TransactionReceipt> {
-    try {
-      return await this.writeAndWait("set_treasury", [newTreasury], 0n, feePreset);
-    } catch (error) {
-      console.error("Error setting treasury:", error);
-      throw new Error("Failed to set treasury");
-    }
+  async setTreasury(newTreasury: string) {
+    return this.write("set_treasury", [newTreasury], 0n);
   }
 }
 
