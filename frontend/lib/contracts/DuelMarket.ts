@@ -283,22 +283,22 @@ class DuelMarket {
   }
 
   async createCleanMarket(input: CreateCleanMarketParams | { params: CreateCleanMarketParams }) {
-    const params = unwrap<CreateCleanMarketParams>(input);
-    return this.write(
-      "create_clean_market",
-      this.cleanMarketArgs(params.params),
-      parseEther(String(params.params.stakeGen))
-    );
-  }
+  const params = unwrap<CreateCleanMarketParams>(input);
+  return this.write(
+    "create_clean_market",
+    this.cleanMarketArgs(params),
+    parseEther(String(params.stakeGen))
+  );
+}
 
-  async createVibeMarket(input: CreateVibeMarketParams | { params: CreateVibeMarketParams }) {
-    const params = unwrap<CreateVibeMarketParams>(input);
-    return this.write(
-      "create_vibe_market",
-      this.vibeMarketArgs(params.params),
-      parseEther(String(params.params.stakeGen))
-    );
-  }
+async createVibeMarket(input: CreateVibeMarketParams | { params: CreateVibeMarketParams }) {
+  const params = unwrap<CreateVibeMarketParams>(input);
+  return this.write(
+    "create_vibe_market",
+    this.vibeMarketArgs(params),
+    parseEther(String(params.stakeGen))
+  );
+}
 
   async joinBet(betId: string, side: BetSide, stakeGen: number | bigint) {
     return this.write("join_bet", [betId, side], parseEther(stakeGen.toString()));

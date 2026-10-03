@@ -10,16 +10,19 @@ import {
 import { localnet } from "genlayer-js/chains";
 
 export default async function main(client: GenLayerClient<any>) {
-  const filePath = path.resolve(process.cwd(), "contracts/football_bets.py");
+  const filePath = path.resolve(process.cwd(), "contracts/duel_market.py");
 
   try {
     const contractCode = new Uint8Array(readFileSync(filePath));
 
     await client.initializeConsensusSmartContract();
 
+    const admin = "0x4b2AF417022Ee4b2374a0a0D199e10CCb480dEaA";
+    const treasury = admin;
+
     const deployTransaction = await client.deployContract({
       code: contractCode,
-      args: [],
+      args: [admin, treasury, 200, 3_600_000],
     });
 
     const receipt = await client.waitForTransactionReceipt({

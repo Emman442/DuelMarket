@@ -84,7 +84,6 @@ export const CreateMarketModal: React.FC<CreateMarketModalProps> = ({
     try {
       if (marketType === "clean") {
         await createCleanMarketAsync({
-          params: {
             question: question.trim(),
             sideALabel: sideALabel.trim(),
             sideBLabel: sideBLabel.trim(),
@@ -97,22 +96,19 @@ export const CreateMarketModal: React.FC<CreateMarketModalProps> = ({
             lockMinutes,
             minStake: parsedMinStake,
             stakeGen: parsedStake,
-          },
         });
       } else {
         await createVibeMarketAsync({
-          params: {
-            question: question.trim(),
-            sideALabel: sideALabel.trim(),
-            sideBLabel: sideBLabel.trim(),
-            evidenceUrl: vibeEvidenceUrl.trim(),
-            evidenceUrlFallback: vibeFallbackUrl.trim(),
-            resolutionCriteria: vibeCriteria.trim(),
-            creatorSide,
-            lockMinutes,
-            minStake: parsedMinStake,
-            stakeGen: parsedStake,
-          },
+          question: question.trim(),
+          sideALabel: sideALabel.trim(),
+          sideBLabel: sideBLabel.trim(),
+          evidenceUrl: vibeEvidenceUrl.trim(),
+          evidenceUrlFallback: vibeFallbackUrl.trim(),
+          resolutionCriteria: vibeCriteria.trim(),
+          creatorSide,
+          lockMinutes,
+          minStake: parsedMinStake,
+          stakeGen: parsedStake,
         });
       }
       resetAndClose();
