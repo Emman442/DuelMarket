@@ -282,7 +282,7 @@ class DuelMarket {
     return toNumber(await this.read("get_total_positions", []));
   }
 
-  async createCleanMarket(input: CreateCleanMarketParams | { params: CreateCleanMarketParams }) {
+ async createCleanMarket(input: CreateCleanMarketParams | { params: CreateCleanMarketParams }) {
   const params = unwrap<CreateCleanMarketParams>(input);
   return this.write(
     "create_clean_market",
